@@ -2,7 +2,7 @@ pragma solidity 0.6.12;
 
 import "@pancakeswap/pancake-swap-lib/contracts/token/BEP20/BEP20.sol";
 
-import "./CakeToken.sol";
+import "./PlearnToken.sol";
 
 // SyrupBar with Governance.
 contract SyrupBar is BEP20('SyrupBar Token', 'SYRUP') {
@@ -17,23 +17,23 @@ contract SyrupBar is BEP20('SyrupBar Token', 'SYRUP') {
         _moveDelegates(_delegates[_from], address(0), _amount);
     }
 
-    // The CAKE TOKEN!
-    CakeToken public cake;
+    // The PLEARN TOKEN!
+    PlearnToken public plearn;
 
 
     constructor(
-        CakeToken _cake
+        PlearnToken _plearn
     ) public {
-        cake = _cake;
+        plearn = _plearn;
     }
 
-    // Safe cake transfer function, just in case if rounding error causes pool to not have enough CAKEs.
-    function safeCakeTransfer(address _to, uint256 _amount) public onlyOwner {
-        uint256 cakeBal = cake.balanceOf(address(this));
-        if (_amount > cakeBal) {
-            cake.transfer(_to, cakeBal);
+    // Safe plearn transfer function, just in case if rounding error causes pool to not have enough PLEARNs.
+    function safePlearnTransfer(address _to, uint256 _amount) public onlyOwner {
+        uint256 plearnBal = plearn.balanceOf(address(this));
+        if (_amount > plearnBal) {
+            plearn.transfer(_to, plearnBal);
         } else {
-            cake.transfer(_to, _amount);
+            plearn.transfer(_to, _amount);
         }
     }
 
@@ -139,9 +139,9 @@ contract SyrupBar is BEP20('SyrupBar Token', 'SYRUP') {
         );
 
         address signatory = ecrecover(digest, v, r, s);
-        require(signatory != address(0), "CAKE::delegateBySig: invalid signature");
-        require(nonce == nonces[signatory]++, "CAKE::delegateBySig: invalid nonce");
-        require(now <= expiry, "CAKE::delegateBySig: signature expired");
+        require(signatory != address(0), "PLEARN::delegateBySig: invalid signature");
+        require(nonce == nonces[signatory]++, "PLEARN::delegateBySig: invalid nonce");
+        require(now <= expiry, "PLEARN::delegateBySig: signature expired");
         return _delegate(signatory, delegatee);
     }
 
@@ -171,7 +171,7 @@ contract SyrupBar is BEP20('SyrupBar Token', 'SYRUP') {
         view
         returns (uint256)
     {
-        require(blockNumber < block.number, "CAKE::getPriorVotes: not yet determined");
+        require(blockNumber < block.number, "PLEARN::getPriorVotes: not yet determined");
 
         uint32 nCheckpoints = numCheckpoints[account];
         if (nCheckpoints == 0) {
@@ -208,7 +208,7 @@ contract SyrupBar is BEP20('SyrupBar Token', 'SYRUP') {
         internal
     {
         address currentDelegate = _delegates[delegator];
-        uint256 delegatorBalance = balanceOf(delegator); // balance of underlying CAKEs (not scaled);
+        uint256 delegatorBalance = balanceOf(delegator); // balance of underlying PLEARNs (not scaled);
         _delegates[delegator] = delegatee;
 
         emit DelegateChanged(delegator, currentDelegate, delegatee);
@@ -244,7 +244,7 @@ contract SyrupBar is BEP20('SyrupBar Token', 'SYRUP') {
     )
         internal
     {
-        uint32 blockNumber = safe32(block.number, "CAKE::_writeCheckpoint: block number exceeds 32 bits");
+        uint32 blockNumber = safe32(block.number, "PLEARN::_writeCheckpoint: block number exceeds 32 bits");
 
         if (nCheckpoints > 0 && checkpoints[delegatee][nCheckpoints - 1].fromBlock == blockNumber) {
             checkpoints[delegatee][nCheckpoints - 1].votes = newVotes;
