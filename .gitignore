@@ -1,0 +1,14 @@
+#Buidler files
+artifacts/
+build/
+cache/
+node_modules/
+
+#Deploy and config
+scripts/
+secrets.json
+yarn.lock
+
+# OpenZeppelin
+.openzeppelin/*.json
+.openzeppelin/.session
