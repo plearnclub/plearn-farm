@@ -1,4 +1,5 @@
-pragma solidity 0.6.12;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.8.0;
 
 interface IBEP20 {
     /**
@@ -38,7 +39,9 @@ interface IBEP20 {
      *
      * Emits a {Transfer} event.
      */
-    function transfer(address recipient, uint256 amount) external returns (bool);
+    function transfer(address recipient, uint256 amount)
+        external
+        returns (bool);
 
     /**
      * @dev Returns the remaining number of tokens that `spender` will be
@@ -47,7 +50,10 @@ interface IBEP20 {
      *
      * This value changes when {approve} or {transferFrom} are called.
      */
-    function allowance(address _owner, address spender) external view returns (uint256);
+    function allowance(address _owner, address spender)
+        external
+        view
+        returns (uint256);
 
     /**
      * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
@@ -92,33 +98,9 @@ interface IBEP20 {
      * @dev Emitted when the allowance of a `spender` for an `owner` is set by
      * a call to {approve}. `value` is the new allowance.
      */
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
-
-
-contract PancakeVoterProxy {
-    // SYRUP
-    address public constant votes = 0x009cF7bC57584b7998236eff51b98A168DceA9B0;
-
-    function decimals() external pure returns (uint8) {
-        return uint8(18);
-    }
-
-    function name() external pure returns (string memory) {
-        return 'SYRUPVOTE';
-    }
-
-    function symbol() external pure returns (string memory) {
-        return 'SYRUP';
-    }
-
-    function totalSupply() external view returns (uint256) {
-        return IBEP20(votes).totalSupply();
-    }
-
-    function balanceOf(address _voter) external view returns (uint256) {
-        return IBEP20(votes).balanceOf(_voter);
-    }
-
-    constructor() public {}
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
 }

@@ -1,12 +1,13 @@
-pragma solidity 0.6.12;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.8.0;
 
-import '@pancakeswap/pancake-swap-lib/contracts/math/SafeMath.sol';
-import '@pancakeswap/pancake-swap-lib/contracts/token/BEP20/IBEP20.sol';
-import '@pancakeswap/pancake-swap-lib/contracts/token/BEP20/SafeBEP20.sol';
-import '@pancakeswap/pancake-swap-lib/contracts/access/Ownable.sol';
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./PlearnToken.sol";
 import "./SyrupBar.sol";
+import "./token/BEP20/BEP20.sol";
+import "./token/BEP20/SafeBEP20.sol";
 
 // import "@nomiclabs/buidler/console.sol";
 
@@ -91,7 +92,7 @@ contract MasterChef is Ownable {
         address _devaddr,
         uint256 _plearnPerBlock,
         uint256 _startBlock
-    ) public {
+    ) {
         plearn = _plearn;
         syrup = _syrup;
         devaddr = _devaddr;
