@@ -2,12 +2,11 @@
 pragma solidity >=0.8.0;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./PlearnToken.sol";
 import "./SyrupBar.sol";
 import "./token/BEP20/BEP20.sol";
-import "./token/BEP20/SafeBEP20.sol";
+import "./token/BEP20/SafeBEP20Upgradeable.sol";
 
 // import "@nomiclabs/buidler/console.sol";
 
@@ -33,7 +32,7 @@ interface IMigratorChef {
 // Have fun reading it. Hopefully it's bug-free. God bless.
 contract MasterChef is OwnableUpgradeable {
     using SafeMath for uint256;
-    using SafeBEP20 for IBEP20;
+    using SafeBEP20Upgradeable for IBEP20;
 
     // Info of each user.
     struct UserInfo {
@@ -66,7 +65,7 @@ contract MasterChef is OwnableUpgradeable {
     SyrupBar public syrup;
 
     //Pools, Farms, Dev, Refs percent decimals
-    uint256 public percentDec = 1000000;
+    uint256 public percentDec;
     //Pools and Farms percent from token per block
     uint256 public stakingPercent;
     //Developers percent from token per block
@@ -91,9 +90,9 @@ contract MasterChef is OwnableUpgradeable {
     uint256 public startBlock;
 
     // Bonus muliplier for early plearn makers.
-    uint256 public BONUS_MULTIPLIER = 1;
+    uint256 public BONUS_MULTIPLIER;
     // Total allocation points. Must be the sum of all allocation points in all pools.
-    uint256 public totalAllocPoint = 0;
+    uint256 public totalAllocPoint;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -147,6 +146,8 @@ contract MasterChef is OwnableUpgradeable {
             })
         );
 
+        percentDec = 1000000;
+        BONUS_MULTIPLIER = 1;
         totalAllocPoint = 1000;
     }
 
