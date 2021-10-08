@@ -70,7 +70,6 @@ contract SmartChef is Ownable, ReentrancyGuard {
      * @param _startBlock: start block
      * @param _bonusEndBlock: end block
      * @param _poolLimitPerUser: pool limit per user in stakedToken (if any, else 0)
-     * @param _admin: admin address with ownership
      */
     constructor(
         IBEP20 _stakedToken,
@@ -78,8 +77,7 @@ contract SmartChef is Ownable, ReentrancyGuard {
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _bonusEndBlock,
-        uint256 _poolLimitPerUser,
-        address _admin
+        uint256 _poolLimitPerUser
     ) {
         stakedToken = _stakedToken;
         rewardToken = _rewardToken;
@@ -99,9 +97,6 @@ contract SmartChef is Ownable, ReentrancyGuard {
 
         // Set the lastRewardBlock as the startBlock
         lastRewardBlock = startBlock;
-
-        // Transfer ownership to the admin address who becomes owner of the contract
-        transferOwnership(_admin);
     }
 
     /*
@@ -186,10 +181,10 @@ contract SmartChef is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice It allows the admin to recover wrong tokens sent to the contract
+     * @notice It allows the owner to recover wrong tokens sent to the contract
      * @param _tokenAddress: the address of the token to withdraw
      * @param _tokenAmount: the number of tokens to withdraw
-     * @dev This function is only callable by admin.
+     * @dev This function is only callable by owner.
      */
     function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
         require(_tokenAddress != address(stakedToken), "Cannot be staked token");
@@ -238,7 +233,7 @@ contract SmartChef is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice It allows the admin to update start and end blocks
+     * @notice It allows the owner to update start and end blocks
      * @dev This function is only callable by owner.
      * @param _startBlock: the new start block
      * @param _bonusEndBlock: the new end block
