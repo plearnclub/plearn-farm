@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./PlearnToken.sol";
@@ -31,7 +31,7 @@ interface IMigratorChef {
 // distributed and the community can show to govern itself.
 //
 // Have fun reading it. Hopefully it's bug-free. God bless.
-contract MasterChef is Ownable {
+contract MasterChef is OwnableUpgradeable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
@@ -111,7 +111,45 @@ contract MasterChef is Ownable {
         uint256 amount
     );
 
-    constructor(
+    // constructor(
+    //     PlearnToken _plearn,
+    //     SyrupBar _syrup,
+    //     address _devAddr,
+    //     address _refAddr,
+    //     address _safuAddr,
+    //     uint256 _plearnPerBlock,
+    //     uint256 _startBlock,
+    //     uint256 _stakingPercent,
+    //     uint256 _devPercent,
+    //     uint256 _refPercent,
+    //     uint256 _safuPercent
+    // ) {
+    //     plearn = _plearn;
+    //     syrup = _syrup;
+    //     devAddr = _devAddr;
+    //     refAddr = _refAddr;
+    //     safuAddr = _safuAddr;
+    //     plearnPerBlock = _plearnPerBlock;
+    //     startBlock = _startBlock;
+    //     stakingPercent = _stakingPercent;
+    //     devPercent = _devPercent;
+    //     refPercent = _refPercent;
+    //     safuPercent = _safuPercent;
+
+    //     // staking pool
+    //     poolInfo.push(
+    //         PoolInfo({
+    //             lpToken: _plearn,
+    //             allocPoint: 1000,
+    //             lastRewardBlock: startBlock,
+    //             accPlearnPerShare: 0
+    //         })
+    //     );
+
+    //     totalAllocPoint = 1000;
+    // }
+
+    function initialize(
         PlearnToken _plearn,
         SyrupBar _syrup,
         address _devAddr,
@@ -123,7 +161,8 @@ contract MasterChef is Ownable {
         uint256 _devPercent,
         uint256 _refPercent,
         uint256 _safuPercent
-    ) {
+    ) public initializer {
+        __Ownable_init();
         plearn = _plearn;
         syrup = _syrup;
         devAddr = _devAddr;
@@ -157,8 +196,8 @@ contract MasterChef is Ownable {
         return poolInfo.length;
     }
 
-     function withdrawDevAndRefFee() public{
-        require(lastBlockDevWithdraw < block.number, 'wait for new block');
+    function withdrawDevAndRefFee() public {
+        require(lastBlockDevWithdraw < block.number, "wait for new block");
         uint256 multiplier = getMultiplier(lastBlockDevWithdraw, block.number);
         uint256 BSWReward = multiplier.mul(plearnPerBlock);
         plearn.mint(devAddr, BSWReward.mul(devPercent).div(percentDec));
@@ -277,7 +316,8 @@ contract MasterChef is Ownable {
                 plearnReward.mul(1e12).div(lpSupply)
             );
         }
-        return user.amount.mul(accPlearnPerShare).div(1e12).sub(user.rewardDebt);
+        return
+            user.amount.mul(accPlearnPerShare).div(1e12).sub(user.rewardDebt);
     }
 
     // Update reward variables for all pools. Be careful of gas spending!
