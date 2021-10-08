@@ -111,44 +111,6 @@ contract MasterChef is OwnableUpgradeable {
         uint256 amount
     );
 
-    // constructor(
-    //     PlearnToken _plearn,
-    //     SyrupBar _syrup,
-    //     address _devAddr,
-    //     address _refAddr,
-    //     address _safuAddr,
-    //     uint256 _plearnPerBlock,
-    //     uint256 _startBlock,
-    //     uint256 _stakingPercent,
-    //     uint256 _devPercent,
-    //     uint256 _refPercent,
-    //     uint256 _safuPercent
-    // ) {
-    //     plearn = _plearn;
-    //     syrup = _syrup;
-    //     devAddr = _devAddr;
-    //     refAddr = _refAddr;
-    //     safuAddr = _safuAddr;
-    //     plearnPerBlock = _plearnPerBlock;
-    //     startBlock = _startBlock;
-    //     stakingPercent = _stakingPercent;
-    //     devPercent = _devPercent;
-    //     refPercent = _refPercent;
-    //     safuPercent = _safuPercent;
-
-    //     // staking pool
-    //     poolInfo.push(
-    //         PoolInfo({
-    //             lpToken: _plearn,
-    //             allocPoint: 1000,
-    //             lastRewardBlock: startBlock,
-    //             accPlearnPerShare: 0
-    //         })
-    //     );
-
-    //     totalAllocPoint = 1000;
-    // }
-
     function initialize(
         PlearnToken _plearn,
         SyrupBar _syrup,
@@ -347,8 +309,6 @@ contract MasterChef is OwnableUpgradeable {
             .mul(stakingPercent)
             .div(percentDec);
 
-        //plearn.mint(devAddr, plearnReward.div(10));
-
         plearn.mint(address(syrup), plearnReward);
         pool.accPlearnPerShare = pool.accPlearnPerShare.add(
             plearnReward.mul(1e12).div(lpSupply)
@@ -486,8 +446,6 @@ contract MasterChef is OwnableUpgradeable {
     }
 
     function updatePlearnPerBlock(uint256 newAmount) public onlyOwner {
-        //require(newAmount <= 30 * 1e18, 'Max per block 30 BSW');
-        //require(newAmount >= 1 * 1e18, 'Min per block 1 BSW');
         plearnPerBlock = newAmount;
     }
 }
