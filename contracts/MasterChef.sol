@@ -37,7 +37,7 @@ contract MasterChef is Ownable {
 
     // Info of each user.
     struct UserInfo {
-        uint256 amount;     // How many LP tokens the user has provided.
+        uint256 amount; // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
         //
         // We do some fancy math here. Basically, any point in time, the amount of PLEARNs
@@ -54,9 +54,9 @@ contract MasterChef is Ownable {
 
     // Info of each pool.
     struct PoolInfo {
-        IBEP20 lpToken;           // Address of LP token contract.
-        uint256 allocPoint;       // How many allocation points assigned to this pool. PLEARNs to distribute per block.
-        uint256 lastRewardBlock;  // Last block number that PLEARNs distribution occurs.
+        IBEP20 lpToken; // Address of LP token contract.
+        uint256 allocPoint; // How many allocation points assigned to this pool. PLEARNs to distribute per block.
+        uint256 lastRewardBlock; // Last block number that PLEARNs distribution occurs.
         uint256 accPlearnPerShare; // Accumulated PLEARNs per share, times 1e12. See below.
     }
 
@@ -64,51 +64,89 @@ contract MasterChef is Ownable {
     PlearnToken public plearn;
     // The SYRUP TOKEN!
     SyrupBar public syrup;
+
+    //Pools, Farms, Dev, Refs percent decimals
+    uint256 public percentDec = 1000000;
+    //Pools and Farms percent from token per block
+    uint256 public stakingPercent;
+    //Developers percent from token per block
+    uint256 public devPercent;
+    //Referrals percent from token per block
+    uint256 public refPercent;
+    //Safu fund percent from token per block
+    uint256 public safuPercent;
+
     // Dev address.
-    address public devaddr;
+    address public devAddr;
+    // Safu fund.
+    address public safuAddr;
+    // Refferals commision address.
+    address public refAddr;
+
     // PLEARN tokens created per block.
     uint256 public plearnPerBlock;
+    // Last block then develeper withdraw dev and ref fee
+    uint256 public lastBlockDevWithdraw;
+    // The block number when PLEARN mining starts.
+    uint256 public startBlock;
+
     // Bonus muliplier for early plearn makers.
     uint256 public BONUS_MULTIPLIER = 1;
-    // The migrator contract. It has a lot of power. Can only be set through governance (owner).
-    IMigratorChef public migrator;
+    // Total allocation points. Must be the sum of all allocation points in all pools.
+    uint256 public totalAllocPoint = 0;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens.
-    mapping (uint256 => mapping (address => UserInfo)) public userInfo;
-    // Total allocation points. Must be the sum of all allocation points in all pools.
-    uint256 public totalAllocPoint = 0;
-    // The block number when PLEARN mining starts.
-    uint256 public startBlock;
+    mapping(uint256 => mapping(address => UserInfo)) public userInfo;
+
+    // The migrator contract. It has a lot of power. Can only be set through governance (owner).
+    IMigratorChef public migrator;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
+    event EmergencyWithdraw(
+        address indexed user,
+        uint256 indexed pid,
+        uint256 amount
+    );
 
     constructor(
         PlearnToken _plearn,
         SyrupBar _syrup,
-        address _devaddr,
+        address _devAddr,
+        address _refAddr,
+        address _safuAddr,
         uint256 _plearnPerBlock,
-        uint256 _startBlock
+        uint256 _startBlock,
+        uint256 _stakingPercent,
+        uint256 _devPercent,
+        uint256 _refPercent,
+        uint256 _safuPercent
     ) {
         plearn = _plearn;
         syrup = _syrup;
-        devaddr = _devaddr;
+        devAddr = _devAddr;
+        refAddr = _refAddr;
+        safuAddr = _safuAddr;
         plearnPerBlock = _plearnPerBlock;
         startBlock = _startBlock;
+        stakingPercent = _stakingPercent;
+        devPercent = _devPercent;
+        refPercent = _refPercent;
+        safuPercent = _safuPercent;
 
         // staking pool
-        poolInfo.push(PoolInfo({
-            lpToken: _plearn,
-            allocPoint: 1000,
-            lastRewardBlock: startBlock,
-            accPlearnPerShare: 0
-        }));
+        poolInfo.push(
+            PoolInfo({
+                lpToken: _plearn,
+                allocPoint: 1000,
+                lastRewardBlock: startBlock,
+                accPlearnPerShare: 0
+            })
+        );
 
         totalAllocPoint = 1000;
-
     }
 
     function updateMultiplier(uint256 multiplierNumber) public onlyOwner {
@@ -119,32 +157,56 @@ contract MasterChef is Ownable {
         return poolInfo.length;
     }
 
+     function withdrawDevAndRefFee() public{
+        require(lastBlockDevWithdraw < block.number, 'wait for new block');
+        uint256 multiplier = getMultiplier(lastBlockDevWithdraw, block.number);
+        uint256 BSWReward = multiplier.mul(plearnPerBlock);
+        plearn.mint(devAddr, BSWReward.mul(devPercent).div(percentDec));
+        plearn.mint(safuAddr, BSWReward.mul(safuPercent).div(percentDec));
+        plearn.mint(refAddr, BSWReward.mul(refPercent).div(percentDec));
+        lastBlockDevWithdraw = block.number;
+    }
+
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate) public onlyOwner {
+    function add(
+        uint256 _allocPoint,
+        IBEP20 _lpToken,
+        bool _withUpdate
+    ) public onlyOwner {
         if (_withUpdate) {
             massUpdatePools();
         }
-        uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
+        uint256 lastRewardBlock = block.number > startBlock
+            ? block.number
+            : startBlock;
         totalAllocPoint = totalAllocPoint.add(_allocPoint);
-        poolInfo.push(PoolInfo({
-            lpToken: _lpToken,
-            allocPoint: _allocPoint,
-            lastRewardBlock: lastRewardBlock,
-            accPlearnPerShare: 0
-        }));
+        poolInfo.push(
+            PoolInfo({
+                lpToken: _lpToken,
+                allocPoint: _allocPoint,
+                lastRewardBlock: lastRewardBlock,
+                accPlearnPerShare: 0
+            })
+        );
         updateStakingPool();
     }
 
     // Update the given pool's PLEARN allocation point. Can only be called by the owner.
-    function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public onlyOwner {
+    function set(
+        uint256 _pid,
+        uint256 _allocPoint,
+        bool _withUpdate
+    ) public onlyOwner {
         if (_withUpdate) {
             massUpdatePools();
         }
         uint256 prevAllocPoint = poolInfo[_pid].allocPoint;
         poolInfo[_pid].allocPoint = _allocPoint;
         if (prevAllocPoint != _allocPoint) {
-            totalAllocPoint = totalAllocPoint.sub(prevAllocPoint).add(_allocPoint);
+            totalAllocPoint = totalAllocPoint.sub(prevAllocPoint).add(
+                _allocPoint
+            );
             updateStakingPool();
         }
     }
@@ -157,7 +219,9 @@ contract MasterChef is Ownable {
         }
         if (points != 0) {
             points = points.div(3);
-            totalAllocPoint = totalAllocPoint.sub(poolInfo[0].allocPoint).add(points);
+            totalAllocPoint = totalAllocPoint.sub(poolInfo[0].allocPoint).add(
+                points
+            );
             poolInfo[0].allocPoint = points;
         }
     }
@@ -180,20 +244,38 @@ contract MasterChef is Ownable {
     }
 
     // Return reward multiplier over the given _from to _to block.
-    function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
+    function getMultiplier(uint256 _from, uint256 _to)
+        public
+        view
+        returns (uint256)
+    {
         return _to.sub(_from).mul(BONUS_MULTIPLIER);
     }
 
     // View function to see pending PLEARNs on frontend.
-    function pendingPlearn(uint256 _pid, address _user) external view returns (uint256) {
+    function pendingPlearn(uint256 _pid, address _user)
+        external
+        view
+        returns (uint256)
+    {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
         uint256 accPlearnPerShare = pool.accPlearnPerShare;
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
-            uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-            uint256 plearnReward = multiplier.mul(plearnPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
-            accPlearnPerShare = accPlearnPerShare.add(plearnReward.mul(1e12).div(lpSupply));
+            uint256 multiplier = getMultiplier(
+                pool.lastRewardBlock,
+                block.number
+            );
+            uint256 plearnReward = multiplier
+                .mul(plearnPerBlock)
+                .mul(pool.allocPoint)
+                .div(totalAllocPoint)
+                .mul(stakingPercent)
+                .div(percentDec);
+            accPlearnPerShare = accPlearnPerShare.add(
+                plearnReward.mul(1e12).div(lpSupply)
+            );
         }
         return user.amount.mul(accPlearnPerShare).div(1e12).sub(user.rewardDebt);
     }
@@ -205,7 +287,6 @@ contract MasterChef is Ownable {
             updatePool(pid);
         }
     }
-
 
     // Update reward variables of the given pool to be up-to-date.
     function updatePool(uint256 _pid) public {
@@ -219,29 +300,45 @@ contract MasterChef is Ownable {
             return;
         }
         uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-        uint256 plearnReward = multiplier.mul(plearnPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
-        plearn.mint(devaddr, plearnReward.div(10));
+        uint256 plearnReward = multiplier
+            .mul(plearnPerBlock)
+            .mul(pool.allocPoint)
+            .div(totalAllocPoint)
+            .mul(stakingPercent)
+            .div(percentDec);
+
+        //plearn.mint(devAddr, plearnReward.div(10));
+
         plearn.mint(address(syrup), plearnReward);
-        pool.accPlearnPerShare = pool.accPlearnPerShare.add(plearnReward.mul(1e12).div(lpSupply));
+        pool.accPlearnPerShare = pool.accPlearnPerShare.add(
+            plearnReward.mul(1e12).div(lpSupply)
+        );
         pool.lastRewardBlock = block.number;
     }
 
     // Deposit LP tokens to MasterChef for PLEARN allocation.
     function deposit(uint256 _pid, uint256 _amount) public {
-
-        require (_pid != 0, 'deposit PLEARN by staking');
+        require(_pid != 0, "deposit PLEARN by staking");
 
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
         if (user.amount > 0) {
-            uint256 pending = user.amount.mul(pool.accPlearnPerShare).div(1e12).sub(user.rewardDebt);
-            if(pending > 0) {
+            uint256 pending = user
+                .amount
+                .mul(pool.accPlearnPerShare)
+                .div(1e12)
+                .sub(user.rewardDebt);
+            if (pending > 0) {
                 safePlearnTransfer(msg.sender, pending);
             }
         }
         if (_amount > 0) {
-            pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+            pool.lpToken.safeTransferFrom(
+                address(msg.sender),
+                address(this),
+                _amount
+            );
             user.amount = user.amount.add(_amount);
         }
         user.rewardDebt = user.amount.mul(pool.accPlearnPerShare).div(1e12);
@@ -250,18 +347,19 @@ contract MasterChef is Ownable {
 
     // Withdraw LP tokens from MasterChef.
     function withdraw(uint256 _pid, uint256 _amount) public {
-
-        require (_pid != 0, 'withdraw PLEARN by unstaking');
+        require(_pid != 0, "withdraw PLEARN by unstaking");
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
 
         updatePool(_pid);
-        uint256 pending = user.amount.mul(pool.accPlearnPerShare).div(1e12).sub(user.rewardDebt);
-        if(pending > 0) {
+        uint256 pending = user.amount.mul(pool.accPlearnPerShare).div(1e12).sub(
+            user.rewardDebt
+        );
+        if (pending > 0) {
             safePlearnTransfer(msg.sender, pending);
         }
-        if(_amount > 0) {
+        if (_amount > 0) {
             user.amount = user.amount.sub(_amount);
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
         }
@@ -275,13 +373,21 @@ contract MasterChef is Ownable {
         UserInfo storage user = userInfo[0][msg.sender];
         updatePool(0);
         if (user.amount > 0) {
-            uint256 pending = user.amount.mul(pool.accPlearnPerShare).div(1e12).sub(user.rewardDebt);
-            if(pending > 0) {
+            uint256 pending = user
+                .amount
+                .mul(pool.accPlearnPerShare)
+                .div(1e12)
+                .sub(user.rewardDebt);
+            if (pending > 0) {
                 safePlearnTransfer(msg.sender, pending);
             }
         }
-        if(_amount > 0) {
-            pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+        if (_amount > 0) {
+            pool.lpToken.safeTransferFrom(
+                address(msg.sender),
+                address(this),
+                _amount
+            );
             user.amount = user.amount.add(_amount);
         }
         user.rewardDebt = user.amount.mul(pool.accPlearnPerShare).div(1e12);
@@ -296,11 +402,13 @@ contract MasterChef is Ownable {
         UserInfo storage user = userInfo[0][msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
         updatePool(0);
-        uint256 pending = user.amount.mul(pool.accPlearnPerShare).div(1e12).sub(user.rewardDebt);
-        if(pending > 0) {
+        uint256 pending = user.amount.mul(pool.accPlearnPerShare).div(1e12).sub(
+            user.rewardDebt
+        );
+        if (pending > 0) {
             safePlearnTransfer(msg.sender, pending);
         }
-        if(_amount > 0) {
+        if (_amount > 0) {
             user.amount = user.amount.sub(_amount);
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
         }
@@ -325,9 +433,21 @@ contract MasterChef is Ownable {
         syrup.safePlearnTransfer(_to, _amount);
     }
 
-    // Update dev address by the previous dev.
-    function dev(address _devaddr) public {
-        require(msg.sender == devaddr, "dev: wut?");
-        devaddr = _devaddr;
+    function setDevAddress(address _devaddr) public onlyOwner {
+        devAddr = _devaddr;
+    }
+
+    function setRefAddress(address _refAddr) public onlyOwner {
+        refAddr = _refAddr;
+    }
+
+    function setSafuAddress(address _safuAddr) public onlyOwner {
+        safuAddr = _safuAddr;
+    }
+
+    function updatePlearnPerBlock(uint256 newAmount) public onlyOwner {
+        //require(newAmount <= 30 * 1e18, 'Max per block 30 BSW');
+        //require(newAmount >= 1 * 1e18, 'Min per block 1 BSW');
+        plearnPerBlock = newAmount;
     }
 }
