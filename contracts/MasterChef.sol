@@ -190,7 +190,6 @@ contract MasterChef is OwnableUpgradeable {
                 accPlearnPerShare: 0
             })
         );
-        updateStakingPool();
     }
 
     // Update the given pool's PLEARN allocation point. Can only be called by the owner.
@@ -205,25 +204,7 @@ contract MasterChef is OwnableUpgradeable {
         uint256 prevAllocPoint = poolInfo[_pid].allocPoint;
         poolInfo[_pid].allocPoint = _allocPoint;
         if (prevAllocPoint != _allocPoint) {
-            totalAllocPoint = totalAllocPoint.sub(prevAllocPoint).add(
-                _allocPoint
-            );
-            updateStakingPool();
-        }
-    }
-
-    function updateStakingPool() internal {
-        uint256 length = poolInfo.length;
-        uint256 points = 0;
-        for (uint256 pid = 1; pid < length; ++pid) {
-            points = points.add(poolInfo[pid].allocPoint);
-        }
-        if (points != 0) {
-            points = points.div(3);
-            totalAllocPoint = totalAllocPoint.sub(poolInfo[0].allocPoint).add(
-                points
-            );
-            poolInfo[0].allocPoint = points;
+            totalAllocPoint = totalAllocPoint.sub(prevAllocPoint).add(_allocPoint);
         }
     }
 
