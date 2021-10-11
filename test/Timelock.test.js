@@ -1,17 +1,16 @@
 const { expectRevert, time } = require('@openzeppelin/test-helpers');
-const ethers = require('ethers');
 const PlearnToken = artifacts.require('PlearnToken');
-const MasterChef = artifacts.require('MasterChef');
 const MockBEP20 = artifacts.require('libs/MockBEP20');
 const Timelock = artifacts.require('Timelock');
 const SyrupBar = artifacts.require('SyrupBar');
+const { ethers, upgrades } = require('hardhat');
 
 function encodeParameters(types, values) {
     const abi = new ethers.utils.AbiCoder();
     return abi.encode(types, values);
 }
 
-contract('Timelock', ([alice, bob, carol, dev, minter]) => {
+contract('Timelock', ([alice, bob, carol, dev, ref, safu, minter]) => {
     beforeEach(async () => {
         this.plearn = await PlearnToken.new({ from: alice });
         await this.plearn.addMinter(alice, { from: alice });
@@ -65,14 +64,17 @@ contract('Timelock', ([alice, bob, carol, dev, minter]) => {
     });
 
     it('should also work with MasterChef', async () => {
+        const [aliceSigner, bobSigner, carolSigner, , , , minterSigner] = await ethers.getSigners();
         this.lp1 = await MockBEP20.new('LPToken', 'LP', '10000000000', { from: minter });
         this.lp2 = await MockBEP20.new('LPToken', 'LP', '10000000000', { from: minter });
         this.syrup = await SyrupBar.new(this.plearn.address, { from: minter });
-        this.chef = await MasterChef.new(this.plearn.address, this.syrup.address, dev, '1000', '0', { from: alice });
+        const MasterChef = await ethers.getContractFactory("MasterChef");
+        this.chef = await upgrades.deployProxy(MasterChef, [this.plearn.address, this.syrup.address, dev, ref, safu, '1000', '0', '857000', '90000', '43000', '10000'], { from: alice });
+
         await this.plearn.transferOwnership(this.chef.address, { from: alice });
         await this.syrup.transferOwnership(this.chef.address, { from: minter });
-        await this.chef.add('100', this.lp1.address, true, { from: alice });
-        await this.chef.transferOwnership(this.timelock.address, { from: alice });
+        await this.chef.connect(aliceSigner).add('100', this.lp1.address, true);
+        await this.chef.connect(aliceSigner).transferOwnership(this.timelock.address);
         await expectRevert(
             this.chef.add('100', this.lp1.address, true, { from: alice }),
             "Ownable: caller is not the owner",
@@ -96,7 +98,7 @@ contract('Timelock', ([alice, bob, carol, dev, minter]) => {
             this.chef.add('100', this.lp1.address, true, { from: alice }),
             "Ownable: caller is not the owner",
         );
-        await this.chef.add('100', this.lp1.address, true, { from: minter })
+        await this.chef.connect(minterSigner).add('100', this.lp1.address, true)
         // await this.timelock.executeTransaction(
         //     this.chef.address, '0', 'add(uint256,address,bool)',
         //     encodeParameters(['uint256', 'address', 'bool'], ['100', this.lp2.address, false]), eta, { from: bob },
