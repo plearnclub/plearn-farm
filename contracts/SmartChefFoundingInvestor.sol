@@ -43,17 +43,14 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
     SmartChefFoundingInvestorTreasury public treasury;
 
-    // Accrued unlocked token per share
-    uint256 public accUnlockedTokenPerShare;
-
     // Info of each user that stakes tokens (stakedToken)
     mapping(address => UserInfo) public userInfo;
 
     struct UserInfo {
+        uint256 initialAmount; // How many staked tokens the user has provided (just deposit)
         uint256 amount; // How many staked tokens the user has provided
-        uint256 unlockedTokenAmount; // How many staked tokens are unlocked
         uint256 rewardDebt; // Reward debt
-        uint256 unlockedTokenDebt; // Unlocked token debt
+        uint256 releasePerBlock; // unlocked token per block
     }
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
@@ -137,11 +134,12 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
         if (_amount > 0) {
             user.amount = user.amount.add(_amount);
+            user.initialAmount = user.amount;
+            user.releasePerBlock = user.initialAmount / (bonusEndBlock - startBlock);
             stakedToken.safeTransferFrom(address(msg.sender), address(this), _amount);
         }
 
         user.rewardDebt = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR);
-        user.unlockedTokenDebt = user.amount.mul(accUnlockedTokenPerShare).div(PRECISION_FACTOR);
 
         emit DepositToInvestor(msg.sender, _amount);
     }
@@ -159,12 +157,12 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         uint256 pending = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR).sub(user.rewardDebt);
 
         if (_amount > 0) {
-            uint256 pendingUnlocked = user.amount.mul(accUnlockedTokenPerShare).div(PRECISION_FACTOR).sub(user.unlockedTokenDebt);
-            user.unlockedTokenAmount = user.unlockedTokenAmount.add(pendingUnlocked);
+            uint256 multiplier = _getMultiplier(startBlock, block.number);
+            uint256 unlockedToken = multiplier.mul(user.releasePerBlock);
+            uint256 pendingUnlocked = unlockedToken.sub(user.initialAmount.sub(user.amount));
 
-            require(user.unlockedTokenAmount  >= _amount, "Amount to withdraw too high");
+            require(pendingUnlocked  >= _amount, "Amount to withdraw too high");
             user.amount = user.amount.sub(_amount);
-            user.unlockedTokenAmount = user.unlockedTokenAmount.sub(_amount);
             stakedToken.safeTransfer(address(msg.sender), _amount);
         }
 
@@ -173,7 +171,6 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         }
 
         user.rewardDebt = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR);
-        user.unlockedTokenDebt = user.amount.mul(accUnlockedTokenPerShare).div(PRECISION_FACTOR);
 
         emit Withdraw(msg.sender, _amount);
     }
@@ -188,10 +185,10 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
         UserInfo storage user = userInfo[_from];
         uint256 amountToTransfer = user.amount;
+        user.initialAmount = 0;
         user.amount = 0;
         user.rewardDebt = 0;
-        user.unlockedTokenAmount = 0;
-        user.unlockedTokenDebt = 0;
+        user.releasePerBlock = 0;
 
         if (amountToTransfer > 0) {
             stakedToken.safeTransfer(address(msg.sender), amountToTransfer);
@@ -278,17 +275,12 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      */
     function pendingUnlockedToken(address _user) external view returns (uint256) {
         UserInfo storage user = userInfo[_user];
-        uint256 stakedTokenSupply = stakedToken.balanceOf(address(this));
-        if (block.number > lastRewardBlock && stakedTokenSupply != 0) {
-            uint256 unlockedTokenPerBlock = _getUnlockedTokenPerBlock(stakedTokenSupply);
-            uint256 multiplier = _getMultiplier(lastRewardBlock, block.number);
-            uint256 unlockedToken = multiplier.mul(unlockedTokenPerBlock);
-            uint256 adjustedUnlockedTokenPerShare = accUnlockedTokenPerShare.add(unlockedToken.mul(PRECISION_FACTOR).div(stakedTokenSupply));
-            uint256 pendingUnlocked = user.amount.mul(adjustedUnlockedTokenPerShare).div(PRECISION_FACTOR).sub(user.unlockedTokenDebt);
-            return pendingUnlocked.add(user.unlockedTokenAmount);
+        if (block.number > startBlock && user.amount > 0) {
+            uint256 multiplier = _getMultiplier(startBlock, block.number);
+            uint256 unlockedToken = multiplier.mul(user.releasePerBlock);
+            return unlockedToken.sub(user.initialAmount.sub(user.amount));
         } else {
-            uint256 pendingUnlocked = user.amount.mul(accUnlockedTokenPerShare).div(PRECISION_FACTOR).sub(user.unlockedTokenDebt);
-            return pendingUnlocked.add(user.unlockedTokenAmount);
+            return 0;
         }
     }
 
@@ -311,11 +303,6 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
         uint256 reward = multiplier.mul(rewardPerBlock);
         accTokenPerShare = accTokenPerShare.add(reward.mul(PRECISION_FACTOR).div(stakedTokenSupply));
-
-        uint256 unlockedTokenPerBlock = _getUnlockedTokenPerBlock(stakedTokenSupply);
-        uint256 unlockedToken = multiplier.mul(unlockedTokenPerBlock);
-        accUnlockedTokenPerShare = accUnlockedTokenPerShare.add(unlockedToken.mul(PRECISION_FACTOR).div(stakedTokenSupply));
-
         lastRewardBlock = block.number;
     }
 
@@ -331,19 +318,6 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
             return 0;
         } else {
             return bonusEndBlock.sub(_from);
-        }
-    }
-
-    /*
-     * @notice Return reward unlocked token per block.
-     * @param _amount: staked token supply
-     */
-    function _getUnlockedTokenPerBlock(uint256 _amount) internal view returns (uint256) {
-        if (_amount == 0) {
-            return 0;
-        } else {
-            uint256 totalBlock = bonusEndBlock.sub(startBlock);
-            return _amount.div(totalBlock);
         }
     }
 
