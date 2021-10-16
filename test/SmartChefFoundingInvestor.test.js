@@ -17,9 +17,9 @@ contract(
 
       var latestBlock = await ethers.provider.getBlockNumber();
       this.startBlock = latestBlock + 100;
-      var endBlock = this.startBlock + 100;
+      this.endBlock = this.startBlock + 100;
       console.log("startBlock: ", this.startBlock);
-      console.log("endBlock: ", endBlock);
+      console.log("endBlock: ", this.endBlock);
 
       this.chef = await SMFFoundingInvestor.new(
         this.pln.address,
@@ -27,7 +27,8 @@ contract(
         this.treasury.address,
         perBlock,
         this.startBlock,
-        endBlock,
+        this.endBlock,
+        0,
         { from: minter }
       );
 
@@ -36,7 +37,7 @@ contract(
       await this.pln.mint(minter, "10000", { from: minter });
 
       // transfer reward
-      await this.pln.transfer(this.treasury.address, "1000", { from: minter });
+      await this.pln.mint(this.treasury.address, "10000", { from: minter });
       console.log(
         "balance treasury for reward token: ",
         (await this.pln.balanceOf(this.treasury.address)).toString()
@@ -45,13 +46,6 @@ contract(
 
     it("deposit to investor/withdraw", async () => {
       await this.pln.approve(this.chef.address, "2000", { from: minter });
-      await expectRevert(
-        this.chef.depositToInvestor("100", alice, { from: minter }),
-        "Investor: wut?"
-      );
-
-      await this.chef.addInvestor(alice, { from: minter });
-      await this.chef.addInvestor(bob, { from: minter });
 
       await this.chef.depositToInvestor("800", alice, { from: minter });
       await this.chef.depositToInvestor("200", bob, { from: minter });
@@ -89,8 +83,6 @@ contract(
     it("emergencyWithdraw", async () => {
       await this.pln.approve(this.chef.address, "2000", { from: minter });
 
-      await this.chef.addInvestor(alice, { from: minter });
-      await this.chef.addInvestor(bob, { from: minter });
       await this.chef.depositToInvestor("100", alice, { from: minter });
       await this.chef.depositToInvestor("200", bob, { from: minter });
       assert.equal(
@@ -102,6 +94,51 @@ contract(
       assert.equal(
         (await this.pln.balanceOf(this.chef.address)).toString(),
         "100"
+      );
+    });
+
+    it("unlocked token", async () => {
+      await this.pln.approve(this.chef.address, "2000", { from: minter });
+      await this.pln.approve(this.chef.address, "2000", { from: alice });
+      await this.pln.approve(this.chef.address, "2000", { from: bob });
+
+      await this.chef.depositToInvestor("100", alice, { from: minter });
+      await this.chef.depositToInvestor("200", bob, { from: minter });
+      assert.equal(
+        (await this.pln.balanceOf(this.chef.address)).toString(),
+        "300"
+      );
+
+      await time.advanceBlockTo(this.startBlock + 1);
+
+      assert.equal(
+        (await this.chef.pendingUnlockedToken(alice)).toString(),
+        "1"
+      );
+      await this.chef.withdraw("2", { from: alice });
+      await this.chef.depositToInvestor("2", alice, { from: minter });
+      assert.equal(
+        (await this.chef.pendingUnlockedToken(alice)).toString(),
+        "3"
+      );
+      console.log("Block number", await ethers.provider.getBlockNumber());
+      assert.equal((await this.chef.pendingUnlockedToken(bob)).toString(), "6");
+
+      await time.advanceBlockTo(this.endBlock);
+
+      assert.equal(
+        (await this.chef.pendingUnlockedToken(alice)).toString(),
+        "100"
+      );
+
+      console.log(
+        "pending Reward token: ",
+        (await this.chef.pendingReward(alice)).toString()
+      );
+      await this.chef.withdraw("100", { from: alice });
+      console.log(
+        "balance pln for alice: ",
+        (await this.pln.balanceOf(alice)).toString()
       );
     });
   }
