@@ -29,6 +29,12 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
     // The block number when PLEARN mining starts.
     uint256 public startBlock;
 
+    // The block number when PLEARN unlocking starts.
+    uint256 public startUnlockBlock;
+
+    // The block number when PLEARN unlocking ends.
+    uint256 public endUnlockBlock;
+
     // The block number of the last pool update
     uint256 public lastRewardBlock;
 
@@ -56,7 +62,6 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         uint256 initialAmount; // How many staked tokens the user has provided (just deposit)
         uint256 amount; // How many staked tokens the user has provided
         uint256 rewardDebt; // Reward debt
-        uint256 unlockedPerBlock; // unlocked token per block
     }
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
@@ -84,6 +89,8 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _bonusEndBlock,
+        uint256 _startUnlockBlock,
+        uint256 _endUnlockBlock,
         uint256 _poolLimitPerUser
     ) {
         stakedToken = _stakedToken;
@@ -92,6 +99,8 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         rewardPerBlock = _rewardPerBlock;
         startBlock = _startBlock;
         bonusEndBlock = _bonusEndBlock;
+        startUnlockBlock = _startUnlockBlock;
+        endUnlockBlock = _endUnlockBlock;
 
         if (_poolLimitPerUser > 0) {
             hasUserLimit = true;
@@ -152,7 +161,6 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         if (_amount > 0) {
             user.amount = user.amount.add(_amount);
             user.initialAmount = user.amount;
-            user.unlockedPerBlock = user.initialAmount / (bonusEndBlock - startBlock);
             stakedToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             EnumerableSet.add(_investors, _address);
         }
@@ -175,8 +183,9 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         uint256 pending = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR).sub(user.rewardDebt);
 
         if (_amount > 0) {
-            uint256 multiplier = _getMultiplier(startBlock, block.number);
-            uint256 unlockedToken = multiplier.mul(user.unlockedPerBlock);
+            uint256 multiplier = _getUnlockedTokenMultiplier(startUnlockBlock, block.number);
+            uint256 unlockedPerBlock = user.initialAmount / (endUnlockBlock - startUnlockBlock);
+            uint256 unlockedToken = multiplier.mul(unlockedPerBlock);
             uint256 pendingUnlocked = unlockedToken.sub(user.initialAmount.sub(user.amount));
 
             require(pendingUnlocked  >= _amount, "Amount to withdraw too high");
@@ -205,7 +214,6 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         user.initialAmount = 0;
         user.amount = 0;
         user.rewardDebt = 0;
-        user.unlockedPerBlock = 0;
 
         if (amountToTransfer > 0) {
             stakedToken.safeTransfer(address(msg.sender), amountToTransfer);
@@ -311,9 +319,10 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      */
     function pendingUnlockedToken(address _user) external view returns (uint256) {
         UserInfo storage user = userInfo[_user];
-        if (block.number > startBlock && user.amount > 0) {
-            uint256 multiplier = _getMultiplier(startBlock, block.number);
-            uint256 unlockedToken = multiplier.mul(user.unlockedPerBlock);
+        if (block.number > startUnlockBlock && user.amount > 0) {
+            uint256 multiplier = _getUnlockedTokenMultiplier(startUnlockBlock, block.number);
+            uint256 unlockedPerBlock = user.initialAmount / (endUnlockBlock - startUnlockBlock);
+            uint256 unlockedToken = multiplier.mul(unlockedPerBlock);
             return unlockedToken.sub(user.initialAmount.sub(user.amount));
         } else {
             return 0;
@@ -354,6 +363,21 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
             return 0;
         } else {
             return bonusEndBlock.sub(_from);
+        }
+    }
+
+    /*
+     * @notice Return unlocked token multiplier over the given _from to _to block.
+     * @param _from: block to unlock start
+     * @param _to: block to unlock finish
+     */
+    function _getUnlockedTokenMultiplier(uint256 _from, uint256 _to) internal view returns (uint256) {
+        if (_to <= endUnlockBlock) {
+            return _to.sub(_from);
+        } else if (_from >= endUnlockBlock) {
+            return 0;
+        } else {
+            return endUnlockBlock.sub(_from);
         }
     }
 
