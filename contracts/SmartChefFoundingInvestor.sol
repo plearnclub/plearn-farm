@@ -65,6 +65,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
     }
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
+    event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
     event Deposit(address indexed user, uint256 amount);
     event DepositToInvestor(address indexed user, uint256 amount);
     event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
@@ -206,7 +207,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      * @notice Withdraw staked tokens without caring about rewards rewards
      * @dev Only callable by owner. Needs to be for emergency.
      */
-    function emergencyWithdraw(address _from) external onlyOwner nonReentrant {
+    function recoverTokenWrongAddress(address _from) external onlyOwner nonReentrant {
         require(block.number < startBlock, "Pool has started");
 
         UserInfo storage user = userInfo[_from];
@@ -219,6 +220,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
             stakedToken.safeTransfer(address(msg.sender), amountToTransfer);
             EnumerableSet.remove(_investors, _from);
         }
+        emit AdminTokenRecoveryWrongAddress(_from, user.amount);
     }
 
     /**
@@ -392,6 +394,10 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
     function getInvestorLength() public view returns (uint256) {
         return EnumerableSet.length(_investors);
+    }
+
+    function isInvestor(address account) public view returns (bool) {
+        return EnumerableSet.contains(_investors, account);
     }
 
     function getInvestor(uint256 _index) public view onlyOwner returns (address){
