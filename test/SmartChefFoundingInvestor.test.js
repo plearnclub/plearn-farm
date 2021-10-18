@@ -28,6 +28,8 @@ contract(
         perBlock,
         this.startBlock,
         this.endBlock,
+        this.startBlock, // unlock start
+        this.endBlock, // unlock end
         0,
         { from: minter }
       );
