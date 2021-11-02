@@ -13,9 +13,6 @@ contract SmartChef is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
-    // The address of the smart chef factory
-    address public SMART_CHEF_FACTORY;
-
     // Whether a limit is set for users
     bool public hasUserLimit;
 
