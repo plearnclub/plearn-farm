@@ -162,10 +162,10 @@ contract MasterChef is OwnableUpgradeable {
     function withdrawDevAndRefFee() public {
         require(lastBlockDevWithdraw < block.number, "wait for new block");
         uint256 multiplier = getMultiplier(lastBlockDevWithdraw, block.number);
-        uint256 BSWReward = multiplier.mul(plearnPerBlock);
-        plearn.mint(devAddr, BSWReward.mul(devPercent).div(percentDec));
-        plearn.mint(safuAddr, BSWReward.mul(safuPercent).div(percentDec));
-        plearn.mint(refAddr, BSWReward.mul(refPercent).div(percentDec));
+        uint256 plearnReward = multiplier.mul(plearnPerBlock);
+        plearn.mint(devAddr, plearnReward.mul(devPercent).div(percentDec));
+        plearn.mint(safuAddr, plearnReward.mul(safuPercent).div(percentDec));
+        plearn.mint(refAddr, plearnReward.mul(refPercent).div(percentDec));
         lastBlockDevWithdraw = block.number;
     }
 
