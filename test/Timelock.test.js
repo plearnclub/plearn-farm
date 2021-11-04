@@ -2,7 +2,7 @@ const { expectRevert, time } = require('@openzeppelin/test-helpers');
 const PlearnToken = artifacts.require('PlearnToken');
 const MockBEP20 = artifacts.require('libs/MockBEP20');
 const Timelock = artifacts.require('Timelock');
-const SyrupBar = artifacts.require('SyrupBar');
+const PlearnEarn = artifacts.require('PlearnEarn');
 const { ethers, upgrades } = require('hardhat');
 
 function encodeParameters(types, values) {
@@ -67,12 +67,12 @@ contract('Timelock', ([alice, bob, carol, dev, ref, safu, minter]) => {
         const [aliceSigner, bobSigner, carolSigner, , , , minterSigner] = await ethers.getSigners();
         this.lp1 = await MockBEP20.new('LPToken', 'LP', '10000000000', { from: minter });
         this.lp2 = await MockBEP20.new('LPToken', 'LP', '10000000000', { from: minter });
-        this.syrup = await SyrupBar.new(this.plearn.address, { from: minter });
+        this.earn = await PlearnEarn.new(this.plearn.address, { from: minter });
         const MasterChef = await ethers.getContractFactory("MasterChef");
-        this.chef = await upgrades.deployProxy(MasterChef, [this.plearn.address, this.syrup.address, dev, ref, safu, '1000', '0', '857000', '90000', '43000', '10000'], { from: alice });
+        this.chef = await upgrades.deployProxy(MasterChef, [this.plearn.address, this.earn.address, dev, ref, safu, '1000', '0', '857000', '90000', '43000', '10000'], { from: alice });
 
         await this.plearn.transferOwnership(this.chef.address, { from: alice });
-        await this.syrup.transferOwnership(this.chef.address, { from: minter });
+        await this.earn.transferOwnership(this.chef.address, { from: minter });
         await this.chef.connect(aliceSigner).add('100', this.lp1.address, true);
         await this.chef.connect(aliceSigner).transferOwnership(this.timelock.address);
         await expectRevert(

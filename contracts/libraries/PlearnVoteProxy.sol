@@ -4,7 +4,7 @@ pragma solidity >=0.8.0;
 import "../token/BEP20/IBEP20.sol";
 
 contract PlearnVoteProxy {
-    // SYRUP
+    // EARN
     address public constant votes = 0x009cF7bC57584b7998236eff51b98A168DceA9B0;
 
     function decimals() external pure returns (uint8) {
@@ -12,11 +12,11 @@ contract PlearnVoteProxy {
     }
 
     function name() external pure returns (string memory) {
-        return "SYRUPVOTE";
+        return "EARNVOTE";
     }
 
     function symbol() external pure returns (string memory) {
-        return "SYRUP";
+        return "EARN";
     }
 
     function totalSupply() external view returns (uint256) {

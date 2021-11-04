@@ -4,7 +4,7 @@ pragma solidity >=0.8.0;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 import "./PlearnToken.sol";
-import "./SyrupBar.sol";
+import "./PlearnEarn.sol";
 import "./token/BEP20/BEP20.sol";
 import "./token/BEP20/SafeBEP20Upgradeable.sol";
 
@@ -61,8 +61,8 @@ contract MasterChef is OwnableUpgradeable {
 
     // The PLEARN TOKEN!
     PlearnToken public plearn;
-    // The SYRUP TOKEN!
-    SyrupBar public syrup;
+    // The EARN TOKEN!
+    PlearnEarn public earn;
 
     //Pools, Farms, Dev, Refs percent decimals
     uint256 public percentDec;
@@ -112,7 +112,7 @@ contract MasterChef is OwnableUpgradeable {
 
     function initialize(
         PlearnToken _plearn,
-        SyrupBar _syrup,
+        PlearnEarn _earn,
         address _devAddr,
         address _refAddr,
         address _safuAddr,
@@ -125,7 +125,7 @@ contract MasterChef is OwnableUpgradeable {
     ) public initializer {
         __Ownable_init();
         plearn = _plearn;
-        syrup = _syrup;
+        earn = _earn;
         devAddr = _devAddr;
         refAddr = _refAddr;
         safuAddr = _safuAddr;
@@ -291,7 +291,7 @@ contract MasterChef is OwnableUpgradeable {
             .mul(stakingPercent)
             .div(percentDec);
 
-        plearn.mint(address(syrup), plearnReward);
+        plearn.mint(address(earn), plearnReward);
         pool.accPlearnPerShare = pool.accPlearnPerShare.add(
             plearnReward.mul(1e12).div(lpSupply)
         );
@@ -374,7 +374,7 @@ contract MasterChef is OwnableUpgradeable {
         }
         user.rewardDebt = user.amount.mul(pool.accPlearnPerShare).div(1e12);
 
-        syrup.mint(msg.sender, _amount);
+        earn.mint(msg.sender, _amount);
         emit Deposit(msg.sender, 0, _amount);
     }
 
@@ -396,7 +396,7 @@ contract MasterChef is OwnableUpgradeable {
         }
         user.rewardDebt = user.amount.mul(pool.accPlearnPerShare).div(1e12);
 
-        syrup.burn(msg.sender, _amount);
+        earn.burn(msg.sender, _amount);
         emit Withdraw(msg.sender, 0, _amount);
     }
 
@@ -412,7 +412,7 @@ contract MasterChef is OwnableUpgradeable {
 
     // Safe plearn transfer function, just in case if rounding error causes pool to not have enough PLEARNs.
     function safePlearnTransfer(address _to, uint256 _amount) internal {
-        syrup.safePlearnTransfer(_to, _amount);
+        earn.safePlearnTransfer(_to, _amount);
     }
 
     function setDevAddress(address _devaddr) public onlyOwner {

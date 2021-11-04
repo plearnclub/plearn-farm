@@ -1,6 +1,6 @@
 const { expectRevert, time } = require('@openzeppelin/test-helpers');
 const PlearnToken = artifacts.require('PlearnToken');
-const SyrupBar = artifacts.require('SyrupBar');
+const PlearnEarn = artifacts.require('PlearnEarn');
 const MockBEP20 = artifacts.require('libs/MockBEP20');
 const { ethers, upgrades } = require('hardhat');
 const { BigNumber, utils } = ethers;
@@ -9,7 +9,7 @@ contract('MasterChef', ([minter, bob, carol, dev, ref, safu, alice]) => {
     beforeEach(async () => {
       const [minterSigner, bobSigner, carolSigner, , , , aliceSigner] = await ethers.getSigners();
         this.plearn = await PlearnToken.new({ from: minter });
-        this.syrup = await SyrupBar.new(this.plearn.address, { from: minter });
+        this.earn = await PlearnEarn.new(this.plearn.address, { from: minter });
         this.lp1 = await MockBEP20.new('LPToken', 'LP1', '1000000', { from: minter });
         this.lp2 = await MockBEP20.new('LPToken', 'LP2', '1000000', { from: minter });
         this.lp3 = await MockBEP20.new('LPToken', 'LP3', '1000000', { from: minter });
@@ -18,10 +18,10 @@ contract('MasterChef', ([minter, bob, carol, dev, ref, safu, alice]) => {
         var latestBlock = await ethers.provider.getBlockNumber();
         this.startBlock = latestBlock + 100;
 
-        this.chef = await upgrades.deployProxy(MasterChef, [this.plearn.address, this.syrup.address, dev, ref, safu, '1000', this.startBlock, '857000', '90000', '43000', '10000'], { from: minter });
+        this.chef = await upgrades.deployProxy(MasterChef, [this.plearn.address, this.earn.address, dev, ref, safu, '1000', this.startBlock, '857000', '90000', '43000', '10000'], { from: minter });
         await this.plearn.addMinter(this.chef.address , { from: minter });
         // await this.plearn.transferOwnership(this.chef.address, { from: minter });
-        await this.syrup.transferOwnership(this.chef.address, { from: minter });
+        await this.earn.transferOwnership(this.chef.address, { from: minter });
         await this.lp1.transfer(bob, '2000', { from: minter });
         await this.lp2.transfer(bob, '2000', { from: minter });
         await this.lp3.transfer(bob, '2000', { from: minter });
@@ -131,13 +131,13 @@ contract('MasterChef', ([minter, bob, carol, dev, ref, safu, alice]) => {
 
       await this.plearn.approve(this.chef.address, '214', { from: alice });
       await chef.enterStaking('200', { from: alice }); //3
-      assert.equal((await this.syrup.balanceOf(alice)).toString(), '200');
+      assert.equal((await this.earn.balanceOf(alice)).toString(), '200');
       assert.equal((await this.plearn.balanceOf(alice)).toString(), '14');
       await chef.enterStaking('14', { from: alice }); //4
-      assert.equal((await this.syrup.balanceOf(alice)).toString(), '214');
+      assert.equal((await this.earn.balanceOf(alice)).toString(), '214');
       assert.equal((await this.plearn.balanceOf(alice)).toString(), '214');
       await chef.leaveStaking(214);
-      assert.equal((await this.syrup.balanceOf(alice)).toString(), '0');
+      assert.equal((await this.earn.balanceOf(alice)).toString(), '0');
       assert.equal((await this.plearn.balanceOf(alice)).toString(), '642');
 
     });

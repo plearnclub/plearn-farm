@@ -6,8 +6,8 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./PlearnToken.sol";
 import "./token/BEP20/BEP20.sol";
 
-// SyrupBar with Governance.
-contract SyrupBar is BEP20("SyrupBar Token", "SYRUP") {
+// PlearnEarn with Governance.
+contract PlearnEarn is BEP20("PlearnEarn Token", "EARN") {
     using SafeMath for uint256;
 
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
