@@ -97,8 +97,8 @@ contract(
 
       await time.advanceBlockTo(this.startBlock);
 
-      await this.chef.deposit("0", { from: alice });
-      await this.chef.deposit("0", { from: bob });
+      await this.chef.harvest({ from: alice });
+      await this.chef.harvest({ from: bob });
 
       assert.equal((await this.pln.balanceOf(alice)).toString(), "80");
 
@@ -115,7 +115,7 @@ contract(
       await time.advanceBlockTo(this.endBlock);
 
       await this.chef.withdraw("600", { from: alice });
-      await this.chef.deposit("0", { from: bob });
+      await this.chef.harvest({ from: bob });
 
       assert.equal((await this.pln.balanceOf(alice)).toString(), "8600");
 
