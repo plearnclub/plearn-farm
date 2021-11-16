@@ -32,7 +32,7 @@ contract('TimelockController', ([alice, bob, carol, dev, ref, safu, minter, admi
        
         await expectRevert(
             this.timelockController.schedule(this.plearn.address, '0', data, '0', '0', DELAY, { from: alice }),
-            'TimelockController: sender requires permission'
+            'AccessControl: account 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 is missing role 0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1'
         );
     });
 
