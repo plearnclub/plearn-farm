@@ -4,11 +4,15 @@ build/
 cache/
 node_modules/
 
+#Contracts
+contracts/test
+
 #Deploy and config
+verify/
 scripts/
 secrets.json
 yarn.lock
 
-# OpenZeppelin
+#OpenZeppelin
 .openzeppelin/*.json
 .openzeppelin/.session

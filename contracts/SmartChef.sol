@@ -76,6 +76,9 @@ contract SmartChef is Ownable, ReentrancyGuard {
         uint256 _bonusEndBlock,
         uint256 _poolLimitPerUser
     ) {
+        require(_startBlock < _bonusEndBlock, "StartBlock must be lower than endBlock");
+        require(block.number < _startBlock, "StartBlock must be higher than current block");
+
         stakedToken = _stakedToken;
         rewardToken = _rewardToken;
         rewardPerBlock = _rewardPerBlock;
@@ -198,6 +201,7 @@ contract SmartChef is Ownable, ReentrancyGuard {
      */
     function stopReward() external onlyOwner {
         bonusEndBlock = block.number;
+        emit RewardsStop(block.number);
     }
 
     /*
@@ -255,7 +259,7 @@ contract SmartChef is Ownable, ReentrancyGuard {
      * @return Pending reward for a given user
      */
     function pendingReward(address _user) external view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
+        UserInfo memory user = userInfo[_user];
         uint256 stakedTokenSupply = stakedToken.balanceOf(address(this));
         if (block.number > lastRewardBlock && stakedTokenSupply != 0) {
             uint256 multiplier = _getMultiplier(lastRewardBlock, block.number);

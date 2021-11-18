@@ -66,9 +66,10 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
     event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
-    event Deposit(address indexed user, uint256 amount);
+    event Harvest(address indexed user);
     event DepositToInvestor(address indexed user, uint256 amount);
     event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
+    event NewStartUnlockAndEndUnlockBlocks(uint256 startUnlockBlock, uint256 endUnlockBlock);
     event NewRewardPerBlock(uint256 rewardPerBlock);
     event NewPoolLimit(uint256 poolLimitPerUser);
     event RewardsStop(uint256 blockNumber);
@@ -94,6 +95,12 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         uint256 _endUnlockBlock,
         uint256 _poolLimitPerUser
     ) {
+        require(_startBlock < _bonusEndBlock, "StartBlock must be lower than endBlock");
+        require(block.number < _startBlock, "StartBlock must be higher than current block");
+
+        require(_startUnlockBlock < _endUnlockBlock, "StartUnlockBlock must be lower than endUnlockBlock");
+        require(block.number < _startUnlockBlock, "StartUnlockBlock must be higher than current block");
+        
         stakedToken = _stakedToken;
         rewardToken = _rewardToken;
         treasury = _treasury;
@@ -119,10 +126,9 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
     /*
      * @notice Collect reward tokens (if any)
-     * @param _amount: 0
+     * @param -
      */
-    function deposit(uint256 _amount) external nonReentrant {
-        require(_amount == 0, "Cannot be staked token");
+    function harvest() external nonReentrant {
         UserInfo storage user = userInfo[msg.sender];
 
         _updatePool();
@@ -136,7 +142,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
         user.rewardDebt = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR);
 
-        emit Deposit(msg.sender, _amount);
+        emit Harvest(msg.sender);
     }
 
     /*
@@ -244,6 +250,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      */
     function stopReward() external onlyOwner {
         bonusEndBlock = block.number;
+        emit RewardsStop(block.number);
     }
 
     /*
@@ -295,13 +302,30 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
         emit NewStartAndEndBlocks(_startBlock, _bonusEndBlock);
     }
 
+    /**
+     * @notice It allows the admin to update start unlock and end unlock blocks
+     * @dev This function is only callable by owner.
+     * @param _startUnlockBlock: the new start unlock block
+     * @param _endUnlockBlock: the new end unlock block
+     */
+    function updateStartUnlockAndEndUnlockBlocks(uint256 _startUnlockBlock, uint256 _endUnlockBlock) external onlyOwner {
+        require(block.number < startUnlockBlock, "Pool has started");
+        require(_startUnlockBlock < _endUnlockBlock, "New startUnlockBlock must be lower than new endUnlockBlock");
+        require(block.number < _startUnlockBlock, "New startUnlockBlock must be higher than current block");
+
+        startUnlockBlock = _startUnlockBlock;
+        endUnlockBlock = _endUnlockBlock;
+
+        emit NewStartUnlockAndEndUnlockBlocks(_startUnlockBlock, _endUnlockBlock);
+    }
+
     /*
      * @notice View function to see pending reward on frontend.
      * @param _user: user address
      * @return Pending reward for a given user
      */
     function pendingReward(address _user) external view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
+        UserInfo memory user = userInfo[_user];
         uint256 stakedTokenSupply = stakedToken.balanceOf(address(this));
         if (block.number > lastRewardBlock && stakedTokenSupply != 0) {
             uint256 multiplier = _getMultiplier(lastRewardBlock, block.number);
@@ -320,7 +344,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      * @return Pending unlocked token for a given user
      */
     function pendingUnlockedToken(address _user) external view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
+        UserInfo memory user = userInfo[_user];
         if (block.number > startUnlockBlock && user.amount > 0) {
             uint256 multiplier = _getUnlockedTokenMultiplier(startUnlockBlock, block.number);
             uint256 unlockedPerBlock = user.initialAmount / (endUnlockBlock - startUnlockBlock);
