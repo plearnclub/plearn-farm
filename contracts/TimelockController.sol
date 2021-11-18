@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @dev Contract module which acts as a timelocked controller. When set as the
@@ -18,7 +19,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
  *
  * _Available since v3.3._
  */
-contract TimelockController is AccessControl {
+contract TimelockController is AccessControl, ReentrancyGuard {
     bytes32 public constant TIMELOCK_ADMIN_ROLE = keccak256("TIMELOCK_ADMIN_ROLE");
     bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
@@ -113,19 +114,6 @@ contract TimelockController is AccessControl {
 
         _minDelay = minDelay;
         emit MinDelayChange(0, minDelay);
-    }
-
-     /**
-     * @dev Modifier to make a function callable only by a certain role. In
-     * addition to checking the sender's role, `address(0)` 's role is also
-     * considered. Granting a role to `address(0)` is equivalent to enabling
-     * this role for everyone.
-     */
-    modifier onlyRoleOrOpenRole(bytes32 role) {
-        if (!hasRole(role, address(0))) {
-            _checkRole(role, _msgSender());
-        }
-        _;
     }
 
     /**
@@ -325,7 +313,7 @@ contract TimelockController is AccessControl {
         bytes calldata data,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable virtual onlyRoleOrOpenRole(EXECUTOR_ROLE) {
+    ) public payable virtual onlyRole(EXECUTOR_ROLE) nonReentrant {
         bytes32 id = hashOperation(target, value, data, predecessor, salt);
         _beforeCall(id, predecessor);
         _call(id, 0, target, value, data);
@@ -347,7 +335,7 @@ contract TimelockController is AccessControl {
         bytes[] calldata datas,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable virtual onlyRoleOrOpenRole(EXECUTOR_ROLE) {
+    ) public payable virtual onlyRole(EXECUTOR_ROLE) nonReentrant {
         require(targets.length == values.length, "TimelockController: length mismatch");
         require(targets.length == datas.length, "TimelockController: length mismatch");
 
