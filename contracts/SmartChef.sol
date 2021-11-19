@@ -76,6 +76,9 @@ contract SmartChef is Ownable, ReentrancyGuard {
         uint256 _bonusEndBlock,
         uint256 _poolLimitPerUser
     ) {
+        require(_startBlock < _bonusEndBlock, "StartBlock must be lower than endBlock");
+        require(block.number < _startBlock, "StartBlock must be higher than current block");
+
         stakedToken = _stakedToken;
         rewardToken = _rewardToken;
         rewardPerBlock = _rewardPerBlock;
