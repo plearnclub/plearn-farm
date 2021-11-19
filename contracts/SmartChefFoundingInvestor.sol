@@ -66,7 +66,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
     event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
-    event Deposit(address indexed user, uint256 amount);
+    event Harvest(address indexed user);
     event DepositToInvestor(address indexed user, uint256 amount);
     event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
     event NewRewardPerBlock(uint256 rewardPerBlock);
@@ -121,8 +121,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      * @notice Collect reward tokens (if any)
      * @param _amount: 0
      */
-    function deposit(uint256 _amount) external nonReentrant {
-        require(_amount == 0, "Cannot be staked token");
+    function harvest(uint256 _amount) external nonReentrant {
         UserInfo storage user = userInfo[msg.sender];
 
         _updatePool();
@@ -136,7 +135,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
         user.rewardDebt = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR);
 
-        emit Deposit(msg.sender, _amount);
+        emit Harvest(msg.sender);
     }
 
     /*
