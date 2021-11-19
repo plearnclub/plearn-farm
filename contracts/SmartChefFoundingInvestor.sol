@@ -301,7 +301,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      * @return Pending reward for a given user
      */
     function pendingReward(address _user) external view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
+        UserInfo memory user = userInfo[_user];
         uint256 stakedTokenSupply = stakedToken.balanceOf(address(this));
         if (block.number > lastRewardBlock && stakedTokenSupply != 0) {
             uint256 multiplier = _getMultiplier(lastRewardBlock, block.number);
@@ -320,7 +320,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
      * @return Pending unlocked token for a given user
      */
     function pendingUnlockedToken(address _user) external view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
+        UserInfo memory user = userInfo[_user];
         if (block.number > startUnlockBlock && user.amount > 0) {
             uint256 multiplier = _getUnlockedTokenMultiplier(startUnlockBlock, block.number);
             uint256 unlockedPerBlock = user.initialAmount / (endUnlockBlock - startUnlockBlock);
