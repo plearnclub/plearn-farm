@@ -201,6 +201,7 @@ contract SmartChef is Ownable, ReentrancyGuard {
      */
     function stopReward() external onlyOwner {
         bonusEndBlock = block.number;
+        emit RewardsStop(block.number);
     }
 
     /*
