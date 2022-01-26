@@ -1,0 +1,309 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+import "./token/BEP20/IBEP20.sol";
+import "./token/BEP20/SafeBEP20.sol";
+import "./SmartChefFoundingInvestorTreasury.sol";
+
+contract SmartChefMember is Ownable, ReentrancyGuard {
+    using SafeMath for uint256;
+    using SafeBEP20 for IBEP20;
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    EnumerableSet.AddressSet private _investors;
+
+    // Whether a limit is set for users
+    bool public hasUserLimit;
+
+    // The pool limit (0 if none)
+    uint256 public poolLimitPerUser;
+
+    // The reward token
+    IBEP20 public rewardToken;
+
+    // The staked token
+    IBEP20 public stakedToken;
+
+    SmartChefFoundingInvestorTreasury public treasury;
+
+    // // Info of each user that stakes tokens.
+    mapping(address => UserInfo) public userInfo;
+
+    struct PackageInfo {
+        uint256 blockPeriod; // The amount of block from start to end.
+    }
+
+    struct DepositInfo {
+        uint256 initialAmount; // How many staked tokens the user has provided (just deposit)
+        uint256 amount; // How many staked tokens the user has provided
+        uint256 startUnlockBlock; // The block number when PLEARN unlocking starts.
+        uint256 endUnlockBlock; // The block number when PLEARN unlocking ends.
+    }
+
+    struct BalanceInfo {
+        DepositInfo staked;
+        DepositInfo reward;
+        PackageInfo packageInfo;
+    }
+
+     struct UserInfo {
+        uint256 numDeposit;
+        mapping (uint256 => BalanceInfo) balanceInfo;
+    }
+
+    // Info of each package.
+    PackageInfo[] public packageInfo;
+
+    event AdminTokenRecovery(address tokenRecovered, uint256 amount);
+    event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
+    event Harvest(address indexed user);
+    event DepositToInvestor(address indexed user, uint256 amount);
+    event EmergencyWithdraw(address indexed user, uint256 amount);
+    event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
+    event NewRewardPerBlock(uint256 rewardPerBlock);
+    event NewPoolLimit(uint256 poolLimitPerUser);
+    event RewardsStop(uint256 blockNumber);
+    event Withdraw(address indexed user, uint256 amount);
+
+    /*
+     * @param _stakedToken: staked token address
+     * @param _rewardToken: reward token address
+     * @param _treasury: treasury address
+     * @param _poolLimitPerUser: pool limit per user in stakedToken (if any, else 0)
+     */
+    constructor(
+        IBEP20 _stakedToken,
+        IBEP20 _rewardToken,
+        SmartChefFoundingInvestorTreasury _treasury,
+        uint256 _poolLimitPerUser
+    ) {
+        stakedToken = _stakedToken;
+        rewardToken = _rewardToken;
+        treasury = _treasury;
+
+        if (_poolLimitPerUser > 0) {
+            hasUserLimit = true;
+            poolLimitPerUser = _poolLimitPerUser;
+        }
+    }
+
+    function packageLength() external view returns (uint256) {
+        return packageInfo.length;
+    }
+
+    function getDepositInfo(address _address, uint256 _depositId) external view returns (BalanceInfo memory) {
+        UserInfo storage user = userInfo[_address];
+        return user.balanceInfo[_depositId];
+    }
+
+    // Add a new package to the pool. Can only be called by the owner.
+    function add(
+        uint256 _blockPeriod
+    ) public onlyOwner {
+        packageInfo.push(
+            PackageInfo({
+                blockPeriod: _blockPeriod
+            })
+        );
+    }
+
+    // /*
+    //  * @notice Collect reward tokens (if any)
+    //  * @param -
+    //  */
+    function harvest(uint256 _depositId) external nonReentrant {
+        UserInfo storage user = userInfo[msg.sender];
+        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
+        DepositInfo storage reward = balanceInfo.reward;
+
+        if (reward.amount > 0) {
+            uint256 pending = _pendingUnlockedToken(reward);
+            if (pending > 0) {
+                safeRewardTransfer(address(msg.sender), pending);
+            }
+        }
+
+        emit Harvest(msg.sender);
+    }
+
+    /*
+     * @notice Deposit staked tokens (if any)
+     * @param _amount: amount to deposit (in stakedTokens)
+     */
+    function depositToInvestor(uint256 _amount, uint256 _rewardAmount, uint256 _packageId, address _address) public onlyOwner {
+        PackageInfo memory package = packageInfo[_packageId];
+        UserInfo storage user = userInfo[_address];
+        BalanceInfo storage balanceInfo = user.balanceInfo[user.numDeposit++];
+        
+        if (hasUserLimit) {
+            require(_amount <= poolLimitPerUser, "User amount above limit");
+        }
+
+        if (_amount > 0 && _rewardAmount > 0) {
+            balanceInfo.staked = DepositInfo({initialAmount: _amount, 
+            amount: _amount,
+            startUnlockBlock: block.number,
+            endUnlockBlock: block.number.add(package.blockPeriod)});
+
+            balanceInfo.reward = DepositInfo({initialAmount: _rewardAmount, 
+            amount: _rewardAmount,
+            startUnlockBlock: block.number,
+            endUnlockBlock: block.number.add(package.blockPeriod)});
+
+            balanceInfo.packageInfo = package;
+
+            stakedToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+            stakedToken.safeTransferFrom(address(msg.sender), address(treasury), _rewardAmount);
+            EnumerableSet.add(_investors, _address);
+        }
+
+        emit DepositToInvestor(_address, _amount);
+    }
+
+    /*
+     * @notice Withdraw staked tokens and collect reward tokens
+     * @param _amount: amount to withdraw (in rewardToken)
+     */
+    function withdraw(uint256 _amount, uint256 _depositId) external nonReentrant {
+        UserInfo storage user = userInfo[msg.sender];
+        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
+        DepositInfo storage staked = balanceInfo.staked;
+        DepositInfo storage reward = balanceInfo.reward;
+        uint256 witdrawPercent = _amount.div(staked.amount);
+
+        require(staked.amount >= _amount, "Amount to withdraw too high");
+        uint256 pending = _pendingUnlockedToken(reward);
+
+        if (_amount > 0) {
+            uint256 pendingUnlocked = _pendingUnlockedToken(staked);
+            require(pendingUnlocked  >= _amount, "Amount to withdraw too high");
+            staked.amount = staked.amount.sub(_amount);
+            stakedToken.safeTransfer(address(msg.sender), _amount);
+        }
+
+        if (pending > 0) {
+            reward.amount = reward.amount.sub(pending);
+            safeRewardTransfer(address(msg.sender), pending);
+        }
+        
+        reward.initialAmount = reward.initialAmount.sub(witdrawPercent.mul(reward.initialAmount));
+        reward.amount = reward.amount.sub(witdrawPercent.mul(reward.amount));
+
+        emit Withdraw(msg.sender, _amount);
+    }
+
+    /**
+     * @notice It allows the admin to recover wrong tokens sent to the contract
+     * @param _tokenAddress: the address of the token to withdraw
+     * @param _tokenAmount: the number of tokens to withdraw
+     * @dev This function is only callable by admin.
+     */
+    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
+        require(_tokenAddress != address(stakedToken), "Cannot be staked token");
+        require(_tokenAddress != address(rewardToken), "Cannot be reward token");
+
+        IBEP20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
+
+        emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
+    }
+
+    /*
+     * @notice Update pool limit per user
+     * @dev Only callable by owner.
+     * @param _hasUserLimit: whether the limit remains forced
+     * @param _poolLimitPerUser: new pool limit per user
+     */
+    function updatePoolLimitPerUser(bool _hasUserLimit, uint256 _poolLimitPerUser) external onlyOwner {
+        require(hasUserLimit, "Must be set");
+        if (_hasUserLimit) {
+            require(_poolLimitPerUser > poolLimitPerUser, "New limit must be higher");
+            poolLimitPerUser = _poolLimitPerUser;
+        } else {
+            hasUserLimit = _hasUserLimit;
+            poolLimitPerUser = 0;
+        }
+        emit NewPoolLimit(poolLimitPerUser);
+    }
+
+    /*
+     * @notice View function to see pending reward on frontend.
+     * @param _user: user address
+     * @param _depositId: deposit id
+     * @return Pending reward for a given user
+     */
+    function pendingReward(address _user, uint256 _depositId) external view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        BalanceInfo memory balanceInfo = user.balanceInfo[_depositId];
+
+        return _pendingUnlockedToken(balanceInfo.reward);
+    }
+
+    /*
+     * @notice View function to see pending reward on frontend.
+     * @param _user: user address
+     * @param _depositId: deposit id
+     * @return Pending unlocked token for a given user
+     */
+    function pendingStakedUnlockedToken(address _user, uint256 _depositId) external view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        BalanceInfo memory balanceInfo = user.balanceInfo[_depositId];
+
+        return _pendingUnlockedToken(balanceInfo.staked);
+    }
+
+
+    // Return Pending unlocked token
+    function _pendingUnlockedToken(DepositInfo memory depositInfo) private view returns (uint256) {
+        if (block.number > depositInfo.startUnlockBlock && depositInfo.amount > 0) {
+            uint256 multiplier = _getUnlockedTokenMultiplier(depositInfo.startUnlockBlock, block.number, depositInfo.endUnlockBlock);
+            uint256 unlockedPerBlock = depositInfo.initialAmount / (depositInfo.endUnlockBlock - depositInfo.startUnlockBlock);
+            uint256 unlockedToken = multiplier.mul(unlockedPerBlock);
+            return unlockedToken.sub(depositInfo.initialAmount.sub(depositInfo.amount));
+        } else {
+            return 0;
+        }
+    }
+
+    /*
+     * @notice Return unlocked token multiplier over the given _from to _to block.
+     * @param _from: block to unlock start
+     * @param _to: block to unlock finish
+     */
+    function _getUnlockedTokenMultiplier(uint256 _from, uint256 _to, uint256 endUnlockBlock) private pure returns (uint256) {
+        if (_to <= endUnlockBlock) {
+            return _to.sub(_from);
+        } else if (_from >= endUnlockBlock) {
+            return 0;
+        } else {
+            return endUnlockBlock.sub(_from);
+        }
+    }
+
+    /*
+     * @notice Reward transfer function.
+     * @param _to: user address
+     * @param _amount: amount to withdraw (in rewardToken)
+     */
+    function safeRewardTransfer(address _to, uint256 _amount) internal {
+        treasury.safeRewardTransfer(_to, _amount);
+    }
+
+    function getInvestorLength() public view returns (uint256) {
+        return EnumerableSet.length(_investors);
+    }
+
+    function isInvestor(address account) public view returns (bool) {
+        return EnumerableSet.contains(_investors, account);
+    }
+
+    function getInvestor(uint256 _index) public view onlyOwner returns (address){
+        require(_index <= getInvestorLength() - 1, "SmartChefMember: index out of bounds");
+        return EnumerableSet.at(_investors, _index);
+    }
+}
