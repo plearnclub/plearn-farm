@@ -58,21 +58,13 @@ describe("SmartChefMember contract", function () {
         .connect(minter)
         .depositToInvestor("2000", "600", 0, bob.address);
       assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
+      const [aliceStaked] = await getDepositInfo(alice.address, 0);
+      const [bobStaked] = await getDepositInfo(bob.address, 0);
 
-      const aliceDepositInfo = await chef.getDepositInfo(alice.address, 0);
-      const aliceStakedTokenAmount = aliceDepositInfo.staked.amount.toString();
-      const aliceStakedTokenInitialAmount =
-        aliceDepositInfo.staked.initialAmount.toString();
-
-      const bobDepositInfo = await chef.getDepositInfo(bob.address, 0);
-      const bobStakedTokenAmount = bobDepositInfo.staked.amount.toString();
-      const bobStakedTokenInitialAmount =
-        bobDepositInfo.staked.initialAmount.toString();
-
-      assert.equal(aliceStakedTokenAmount, "1000");
-      assert.equal(aliceStakedTokenInitialAmount, "1000");
-      assert.equal(bobStakedTokenAmount, "2000");
-      assert.equal(bobStakedTokenInitialAmount, "2000");
+      assert.equal(aliceStaked.amount.toString(), "1000");
+      assert.equal(aliceStaked.initialAmount.toString(), "1000");
+      assert.equal(bobStaked.amount.toString(), "2000");
+      assert.equal(bobStaked.initialAmount.toString(), "2000");
     });
 
     it("Limit Amount", async () => {
@@ -94,25 +86,15 @@ describe("SmartChefMember contract", function () {
         .connect(minter)
         .depositToInvestor("2000", "600", 0, alice.address); // 2
 
-      const aliceDepositInfo = await chef.getDepositInfo(alice.address, 0);
-      const aliceStakedTokenAmount = aliceDepositInfo.staked.amount.toString();
-      const aliceStakedTokenInitialAmount =
-        aliceDepositInfo.staked.initialAmount.toString();
+      const [staked] = await getDepositInfo(alice.address, 0);
 
-      assert.equal(aliceStakedTokenAmount, "1000");
-      assert.equal(aliceStakedTokenInitialAmount, "1000");
+      assert.equal(staked.amount.toString(), "1000");
+      assert.equal(staked.initialAmount.toString(), "1000");
 
-      const aliceSecondDepositInfo = await chef.getDepositInfo(
-        alice.address,
-        1
-      );
-      const aliceSecondStakedTokenAmount =
-        aliceSecondDepositInfo.staked.amount.toString();
-      const aliceSecondStakedTokenInitialAmount =
-        aliceSecondDepositInfo.staked.initialAmount.toString();
+      const [staked2] = await getDepositInfo(alice.address, 1);
 
-      assert.equal(aliceSecondStakedTokenAmount, "2000");
-      assert.equal(aliceSecondStakedTokenInitialAmount, "2000");
+      assert.equal(staked2.amount.toString(), "2000");
+      assert.equal(staked2.initialAmount.toString(), "2000");
     });
 
     it("deposit more than 1, difference pacakage", async () => {
@@ -126,31 +108,17 @@ describe("SmartChefMember contract", function () {
         .connect(minter)
         .depositToInvestor("2000", "600", 1, alice.address); // second deposit package 2
 
-      const aliceDepositInfo = await chef.getDepositInfo(alice.address, 0);
-      const aliceStakedTokenAmount = aliceDepositInfo.staked.amount.toString();
-      const aliceStakedTokenInitialAmount =
-        aliceDepositInfo.staked.initialAmount.toString();
-      const aliceDepositBlockPeriod =
-        aliceDepositInfo.packageInfo.blockPeriod.toString();
+      const [staked, reward, packageInfo] = await getDepositInfo(alice.address, 0);
 
-      assert.equal(aliceStakedTokenAmount, "1000");
-      assert.equal(aliceStakedTokenInitialAmount, "1000");
-      assert.equal(aliceDepositBlockPeriod, "100");
+      assert.equal(staked.amount.toString(), "1000");
+      assert.equal(staked.initialAmount.toString(), "1000");
+      assert.equal(packageInfo.blockPeriod.toString(), "100");
 
-      const aliceSecondDepositInfo = await chef.getDepositInfo(
-        alice.address,
-        1
-      );
-      const aliceSecondStakedTokenAmount =
-        aliceSecondDepositInfo.staked.amount.toString();
-      const aliceSecondStakedTokenInitialAmount =
-        aliceSecondDepositInfo.staked.initialAmount.toString();
-      const aliceSecondDepositBlockPeriod =
-        aliceSecondDepositInfo.packageInfo.blockPeriod.toString();
+      const [staked2, reward2, packageInfo2] = await getDepositInfo(alice.address, 1);
 
-      assert.equal(aliceSecondStakedTokenAmount, "2000");
-      assert.equal(aliceSecondStakedTokenInitialAmount, "2000");
-      assert.equal(aliceSecondDepositBlockPeriod, "400");
+      assert.equal(staked2.amount.toString(), "2000");
+      assert.equal(staked2.initialAmount.toString(), "2000");
+      assert.equal(packageInfo2.blockPeriod.toString(), "400");
     });
   });
 
@@ -249,7 +217,7 @@ describe("SmartChefMember contract", function () {
       await mineNBlocksTo(aliceStartUnlockBlock + 10);
 
       await chef.connect(alice).withdraw("1000", 0);
-      assert.equal((await chef.rewardReclaimableAmount()).toString(), "267");
+      assert.equal((await chef.reclaimableRewardAmount()).toString(), "267");
       assert.equal((await pln.balanceOf(alice.address)).toString(), "1330");
     });
 
@@ -303,6 +271,69 @@ describe("SmartChefMember contract", function () {
     });
   });
 
+  describe("Recovery", function () {
+    it("recover Token and deposit again", async () => {
+      await pln.connect(minter).approve(chef.address, "10000");
+
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("2000", "600", 0, alice.address);
+      const aliceStartUnlockBlock = await getStartUnlockBlocks(
+        alice.address,
+        0
+      );
+
+      assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
+
+      const [staked, reward, packageInfo] = await getDepositInfo(alice.address, 0); // get first deposit
+      assert.equal(staked.amount.toString(), "1000");
+      assert.equal(reward.amount.toString(), "300");
+      assert.equal(packageInfo.blockPeriod.toString(), "100");
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "996100");
+
+      await chef.connect(minter).recoverTokenWrongAddress(alice.address, 0); // recover token from first deposit
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "997100");
+
+      const [staked1, reward1, packageInfo1] = await getDepositInfo(alice.address, 0); // get first deposit
+      assert.equal(staked1.amount.toString(), "0");
+      assert.equal(reward1.amount.toString(), "0");
+      assert.equal(packageInfo1.blockPeriod.toString(), "0");
+      
+      assert.equal((await pln.balanceOf(chef.address)).toString(), "2000");
+      assert.equal((await chef.reclaimableRewardAmount()).toString(), "300");
+
+      await expectRevert(
+        chef.connect(alice).withdrawReclaimableRewardAmount(),
+        "Ownable: caller is not the owner"
+      );
+      await chef.connect(minter).withdrawReclaimableRewardAmount();
+
+      assert.equal((await chef.reclaimableRewardAmount()).toString(), "0");
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "997400");
+
+      await expectRevert(
+        chef
+        .connect(minter)
+        .depositToInvestorAfterRecoverWrongToken("1000", "300", 1, alice.address, 1),
+        "Cannot deposit"
+      );
+
+      await chef
+        .connect(minter)
+        .depositToInvestorAfterRecoverWrongToken("1000", "300", 1, alice.address, 0);
+        assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
+
+        const [staked2, reward2, packageInfo2] = await getDepositInfo(alice.address, 0); // get first deposit
+      assert.equal(staked2.amount.toString(), "1000");
+      assert.equal(reward2.amount.toString(), "300");
+      assert.equal(packageInfo2.blockPeriod.toString(), "400");
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "996100");
+    });
+  });
+
   async function mineNBlocks(n) {
     for (let index = 0; index < n; index++) {
       await ethers.provider.send("evm_mine");
@@ -324,5 +355,10 @@ describe("SmartChefMember contract", function () {
   async function getEndUnlockBlocks(address, depositId) {
     const depositInfo = await chef.getDepositInfo(address, depositId);
     return Number(depositInfo.staked.endUnlockBlock);
+  }
+
+  async function getDepositInfo(address, depositId) {
+    const depositInfo = await chef.getDepositInfo(address, depositId);
+    return [depositInfo.staked, depositInfo.reward, depositInfo.packageInfo];
   }
 });
