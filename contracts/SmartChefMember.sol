@@ -24,6 +24,9 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     // The pool limit (0 if none)
     uint256 public poolLimitPerUser;
 
+    // The precision factor
+    uint256 public PRECISION_FACTOR;
+
     // The reward token
     IBEP20 public rewardToken;
 
@@ -32,7 +35,9 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
 
     SmartChefFoundingInvestorTreasury public treasury;
 
-    // // Info of each user that stakes tokens.
+    uint256 public rewardReclaimableAmount;
+
+    // Info of each user that stakes tokens.
     mapping(address => UserInfo) public userInfo;
 
     struct PackageInfo {
@@ -64,9 +69,6 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
     event Harvest(address indexed user);
     event DepositToInvestor(address indexed user, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 amount);
-    event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
-    event NewRewardPerBlock(uint256 rewardPerBlock);
     event NewPoolLimit(uint256 poolLimitPerUser);
     event RewardsStop(uint256 blockNumber);
     event Withdraw(address indexed user, uint256 amount);
@@ -91,6 +93,11 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
             hasUserLimit = true;
             poolLimitPerUser = _poolLimitPerUser;
         }
+
+        uint256 decimalsRewardToken = uint256(rewardToken.decimals());
+        require(decimalsRewardToken < 30, "Must be inferior to 30");
+
+        PRECISION_FACTOR = uint256(10**(uint256(30).sub(decimalsRewardToken)));
     }
 
     function packageLength() external view returns (uint256) {
@@ -175,7 +182,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
         DepositInfo storage staked = balanceInfo.staked;
         DepositInfo storage reward = balanceInfo.reward;
-        uint256 witdrawPercent = _amount.div(staked.amount);
+        uint256 witdrawPercent =  _amount.mul(PRECISION_FACTOR).div(staked.amount);
 
         require(staked.amount >= _amount, "Amount to withdraw too high");
         uint256 pending = _pendingUnlockedToken(reward);
@@ -192,9 +199,10 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
             safeRewardTransfer(address(msg.sender), pending);
         }
         
-        reward.initialAmount = reward.initialAmount.sub(witdrawPercent.mul(reward.initialAmount));
-        reward.amount = reward.amount.sub(witdrawPercent.mul(reward.amount));
-
+        reward.initialAmount = reward.initialAmount.sub(witdrawPercent.mul(reward.initialAmount).div(PRECISION_FACTOR));
+        rewardReclaimableAmount = rewardReclaimableAmount.add(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
+        reward.amount = reward.amount.sub(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
+        
         emit Withdraw(msg.sender, _amount);
     }
 
@@ -262,7 +270,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     function _pendingUnlockedToken(DepositInfo memory depositInfo) private view returns (uint256) {
         if (block.number > depositInfo.startUnlockBlock && depositInfo.amount > 0) {
             uint256 multiplier = _getUnlockedTokenMultiplier(depositInfo.startUnlockBlock, block.number, depositInfo.endUnlockBlock);
-            uint256 unlockedPerBlock = depositInfo.initialAmount / (depositInfo.endUnlockBlock - depositInfo.startUnlockBlock);
+            uint256 unlockedPerBlock = depositInfo.initialAmount.div(depositInfo.endUnlockBlock.sub(depositInfo.startUnlockBlock));
             uint256 unlockedToken = multiplier.mul(unlockedPerBlock);
             return unlockedToken.sub(depositInfo.initialAmount.sub(depositInfo.amount));
         } else {
