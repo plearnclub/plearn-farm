@@ -35,7 +35,8 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
 
     SmartChefFoundingInvestorTreasury public treasury;
 
-    uint256 public rewardReclaimableAmount;
+    // Whenever the user withdraws the staked tokens. User rewards will be lowered and reclaimableRewardAmount updated.
+    uint256 public reclaimableRewardAmount;
 
     // Info of each user that stakes tokens.
     mapping(address => UserInfo) public userInfo;
@@ -122,7 +123,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
 
     // /*
     //  * @notice Collect reward tokens (if any)
-    //  * @param -
+    //  * @param _depositId: deposit id
     //  */
     function harvest(uint256 _depositId) external nonReentrant {
         UserInfo storage user = userInfo[msg.sender];
@@ -142,6 +143,9 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     /*
      * @notice Deposit staked tokens (if any)
      * @param _amount: amount to deposit (in stakedTokens)
+     * @param _rewardAmount: reward amount to deposit (in reward)
+     * @param _packageId: package to deposit
+     * @param _address: user address
      */
     function depositToInvestor(uint256 _amount, uint256 _rewardAmount, uint256 _packageId, address _address) public onlyOwner {
         PackageInfo memory package = packageInfo[_packageId];
@@ -176,6 +180,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     /*
      * @notice Withdraw staked tokens and collect reward tokens
      * @param _amount: amount to withdraw (in rewardToken)
+     * @param _depositId: deposit id
      */
     function withdraw(uint256 _amount, uint256 _depositId) external nonReentrant {
         UserInfo storage user = userInfo[msg.sender];
@@ -200,10 +205,46 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         }
         
         reward.initialAmount = reward.initialAmount.sub(witdrawPercent.mul(reward.initialAmount).div(PRECISION_FACTOR));
-        rewardReclaimableAmount = rewardReclaimableAmount.add(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
+        reclaimableRewardAmount = reclaimableRewardAmount.add(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
         reward.amount = reward.amount.sub(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
         
         emit Withdraw(msg.sender, _amount);
+    }
+
+    /*
+     * @notice Withdraw staked tokens without caring about rewards rewards
+     * @param _from: user address
+     * @param _depositId: deposit id
+     * @dev Only callable by owner. Needs to be for emergency.
+     */
+    function recoverTokenWrongAddress(address _from, uint256 _depositId) external onlyOwner nonReentrant {
+        UserInfo storage user = userInfo[_from];
+        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
+        DepositInfo storage staked = balanceInfo.staked;
+        DepositInfo storage reward = balanceInfo.reward;
+        PackageInfo storage package = balanceInfo.packageInfo;
+
+        package.blockPeriod = 0;
+
+        uint256 stakedAmountToTransfer = staked.amount;
+        staked.initialAmount = 0;
+        staked.amount = 0;
+        staked.startUnlockBlock = 0;
+        staked.endUnlockBlock = 0;
+
+        if (stakedAmountToTransfer > 0) {
+            stakedToken.safeTransfer(address(msg.sender), stakedAmountToTransfer);
+            EnumerableSet.remove(_investors, _from);
+        }
+
+        uint256 rewardAmount = reward.amount;
+        reclaimableRewardAmount = reclaimableRewardAmount.add(rewardAmount);
+        reward.initialAmount = 0;
+        reward.amount = 0;
+        reward.startUnlockBlock = 0;
+        reward.endUnlockBlock = 0;
+
+        emit AdminTokenRecoveryWrongAddress(_from, stakedAmountToTransfer);
     }
 
     /**
@@ -219,6 +260,60 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         IBEP20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
 
         emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
+    }
+
+    /**
+     * @notice It allows the admin to recover reward.
+     * @dev This function is only callable by admin.
+     */
+    function withdrawReclaimableRewardAmount() external onlyOwner {
+        uint256 amount = reclaimableRewardAmount;
+        if (reclaimableRewardAmount > 0) {
+            reclaimableRewardAmount = reclaimableRewardAmount.sub(amount);
+            safeRewardTransfer(address(msg.sender), amount);
+        }
+    }
+
+    /*
+     * @notice Deposit staked tokens (if any)
+     * @param _amount: amount to deposit (in stakedTokens)
+     * @param _rewardAmount: reward amount to deposit (in reward)
+     * @param _packageId: package to deposit
+     * @param _address: user address
+     * @param _depositId: deposit id
+     */
+    function depositToInvestorAfterRecoverWrongToken(uint256 _amount, uint256 _rewardAmount, uint256 _packageId, address _address, uint256 _depositId) public onlyOwner {
+        PackageInfo memory package = packageInfo[_packageId];
+        UserInfo storage user = userInfo[_address];
+        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
+        
+        require(_depositId < user.numDeposit, "deposit PLEARN by depositToInvestor");
+        require(balanceInfo.staked.amount == 0, "Cannot deposit");
+        require(balanceInfo.reward.amount == 0, "Cannot deposit");
+
+        if (hasUserLimit) {
+            require(_amount <= poolLimitPerUser, "User amount above limit");
+        }
+
+        if (_amount > 0 && _rewardAmount > 0) {
+            balanceInfo.staked = DepositInfo({initialAmount: _amount, 
+            amount: _amount,
+            startUnlockBlock: block.number,
+            endUnlockBlock: block.number.add(package.blockPeriod)});
+
+            balanceInfo.reward = DepositInfo({initialAmount: _rewardAmount, 
+            amount: _rewardAmount,
+            startUnlockBlock: block.number,
+            endUnlockBlock: block.number.add(package.blockPeriod)});
+
+            balanceInfo.packageInfo = package;
+
+            stakedToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+            stakedToken.safeTransferFrom(address(msg.sender), address(treasury), _rewardAmount);
+            EnumerableSet.add(_investors, _address);
+        }
+
+        emit DepositToInvestor(_address, _amount);
     }
 
     /*
@@ -264,7 +359,6 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
 
         return _pendingUnlockedToken(balanceInfo.staked);
     }
-
 
     // Return Pending unlocked token
     function _pendingUnlockedToken(DepositInfo memory depositInfo) private view returns (uint256) {
