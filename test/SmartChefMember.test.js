@@ -296,6 +296,7 @@ describe("SmartChefMember contract", function () {
 
       await chef.connect(minter).recoverTokenWrongAddress(alice.address, 0); // recover token from first deposit
       assert.equal((await pln.balanceOf(minter.address)).toString(), "997100");
+      expect(await chef.isInvestor(alice.address)).to.be.true;
 
       const [staked1, reward1, packageInfo1] = await getDepositInfo(alice.address, 0); // get first deposit
       assert.equal(staked1.amount.toString(), "0");
@@ -331,6 +332,11 @@ describe("SmartChefMember contract", function () {
       assert.equal(reward2.amount.toString(), "300");
       assert.equal(packageInfo2.blockPeriod.toString(), "400");
       assert.equal((await pln.balanceOf(minter.address)).toString(), "996100");
+
+      await chef.connect(minter).recoverTokenWrongAddress(alice.address, 0); // recover token from first deposit
+      await chef.connect(minter).recoverTokenWrongAddress(alice.address, 1); // recover token from second deposit
+      expect(await chef.isInvestor(alice.address)).to.be.false;
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "999100");
     });
   });
 
