@@ -234,7 +234,10 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
 
         if (stakedAmountToTransfer > 0) {
             stakedToken.safeTransfer(address(msg.sender), stakedAmountToTransfer);
-            EnumerableSet.remove(_investors, _from);
+            uint256 totalStaked = _getTotalStaked(_from);
+            if (totalStaked == 0) {
+                EnumerableSet.remove(_investors, _from);
+            }
         }
 
         uint256 rewardAmount = reward.amount;
@@ -370,6 +373,17 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         } else {
             return 0;
         }
+    }
+
+    // Return Total Staked token
+    function _getTotalStaked(address _address) private view returns (uint256) {
+        UserInfo storage user = userInfo[_address];
+        uint256 totalAmount = 0;
+        for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
+            BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
+            totalAmount = totalAmount.add(balanceInfo.staked.amount);
+        }
+        return totalAmount;
     }
 
     /*
