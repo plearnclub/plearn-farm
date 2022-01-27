@@ -154,66 +154,6 @@ describe("SmartChefMember contract", function () {
     });
   });
 
-  describe("Withdraw", function () {
-    it("withdraw staked tokens and collect reward tokens", async () => {
-      await pln.connect(minter).approve(chef.address, "5000");
-
-      await chef
-        .connect(minter)
-        .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
-
-      const aliceEndUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
-      await mineNBlocksTo(aliceEndUnlockBlock);
-      await chef.connect(alice).withdraw("600", 0);
-
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "900");
-
-      // assert.equal((await pln.balanceOf(bob.address)).toString(), "2000");
-    });
-
-    it("withdraw staked tokens and collect reward tokens from second deposit", async () => {
-      await pln.connect(minter).approve(chef.address, "5000");
-
-      await chef
-        .connect(minter)
-        .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, alice.address);
-
-      const aliceEndUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
-      await mineNBlocksTo(aliceEndUnlockBlock);
-      await chef.connect(alice).withdraw("200", 1);
-
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "800");
-    });
-
-    it("should not withdraw staked tokens more than unlocked token", async () => {
-      await pln.connect(minter).approve(chef.address, "5000");
-      await chef
-        .connect(minter)
-        .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
-
-      await mineNBlocks(1);
-
-      var unlockedToken = await chef.pendingStakedUnlockedToken(
-        alice.address,
-        0
-      );
-
-      await expectRevert(
-        chef.connect(alice).withdraw(unlockedToken + 1, 0),
-        "Amount to withdraw too high"
-      );
-    });
-  });
-
   describe("pendingUnlockedToken", function () {
     it("Staked Token", async () => {
       await pln.connect(minter).approve(chef.address, "5000");
@@ -253,6 +193,113 @@ describe("SmartChefMember contract", function () {
         "2000"
       );
       await chef.connect(bob).withdraw("2000", 0);
+    });
+  });
+
+  describe("Withdraw", function () {
+    it("withdraw staked tokens and collect reward tokens, CurrentBlock == EndBlock", async () => {
+      await pln.connect(minter).approve(chef.address, "5000");
+
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("2000", "600", 0, bob.address);
+
+      const aliceEndUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
+      await mineNBlocksTo(aliceEndUnlockBlock);
+      await chef.connect(alice).withdraw("600", 0);
+
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "900");
+
+      // assert.equal((await pln.balanceOf(bob.address)).toString(), "2000");
+    });
+
+    it("withdraw staked tokens and collect reward tokens from second deposit, CurrentBlock == EndBlock", async () => {
+      await pln.connect(minter).approve(chef.address, "5000");
+
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("2000", "600", 0, alice.address);
+
+      const aliceEndUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
+      await mineNBlocksTo(aliceEndUnlockBlock);
+      await chef.connect(alice).withdraw("200", 1);
+
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "800");
+    });
+
+    it("withdraw staked tokens and collect reward tokens, StartBlock < CurrentBlock < EndBlock", async () => {
+      await pln.connect(minter).approve(chef.address, "50000");
+      await chef
+        .connect(minter)
+        .depositToInvestor("10000", "3000", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("20000", "6000", 0, bob.address);
+
+      const aliceStartUnlockBlock = await getStartUnlockBlocks(
+        alice.address,
+        0
+      );
+      await mineNBlocksTo(aliceStartUnlockBlock + 10);
+
+      await chef.connect(alice).withdraw("1000", 0);
+      assert.equal((await chef.rewardReclaimableAmount()).toString(), "267");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "1330");
+    });
+
+    it("should not withdraw staked tokens more than unlocked token", async () => {
+      await pln.connect(minter).approve(chef.address, "5000");
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("2000", "600", 0, bob.address);
+
+      await mineNBlocks(1);
+
+      var unlockedToken = await chef.pendingStakedUnlockedToken(
+        alice.address,
+        0
+      );
+
+      await expectRevert(
+        chef.connect(alice).withdraw(unlockedToken + 1, 0),
+        "Amount to withdraw too high"
+      );
+    });
+  });
+
+  describe("Harvest", function () {
+    it("Harvest - collect reward tokens", async () => {
+      await pln.connect(minter).approve(chef.address, "10000");
+
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("2000", "600", 0, alice.address);
+      await chef
+        .connect(minter)
+        .depositToInvestor("2000", "600", 0, bob.address);
+      const aliceStartUnlockBlock = await getStartUnlockBlocks(
+        alice.address,
+        0
+      );
+      await mineNBlocksTo(aliceStartUnlockBlock + 5);
+      await chef.connect(alice).harvest(0);
+      await chef.connect(alice).harvest(1);
+      await chef.connect(bob).harvest(0);
+
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "54");
+      assert.equal((await pln.balanceOf(bob.address)).toString(), "36");
     });
   });
 
