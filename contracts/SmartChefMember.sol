@@ -133,6 +133,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         if (reward.amount > 0) {
             uint256 pending = _pendingUnlockedToken(reward);
             if (pending > 0) {
+                reward.amount = reward.amount.sub(pending);
                 safeRewardTransfer(address(msg.sender), pending);
             }
         }
