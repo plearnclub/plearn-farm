@@ -245,6 +245,45 @@ describe("SmartChefMember contract", function () {
   });
 
   describe("Harvest", function () {
+    it("should get 50 reward for 1000 reward in 5 block period", async() => {
+      await pln.connect(minter).approve(chef.address, "100000");
+      
+      var result = await chef
+        .connect(minter)
+        .depositToInvestor("10000", "1000", 0, alice.address);
+      await mineNBlocks(5);
+      var withdrawResult = await chef.connect(alice).withdraw(0, 0);
+      var blockCount = withdrawResult.blockNumber - result.blockNumber;
+      assert.equal((await pln.balanceOf(alice.address)).toString(), blockCount * 10);
+    });
+
+    it("should get 15 reward for 300 reward in 5 block period", async() => {
+      await pln.connect(minter).approve(chef.address, "10000");
+
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+
+      await mineNBlocks(5);
+      await chef.connect(alice).withdraw(0, 0);
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "18");
+    });
+    
+    it("should get only reward if withdraw with amount = 0", async() => {
+      await pln.connect(minter).approve(chef.address, "10000");
+
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+
+      await mineNBlocks(5);
+      await chef.connect(alice).withdraw(0, 0);
+
+      const [staked, reward,] = await getDepositInfo(alice.address, 0); // get first deposit
+      assert.equal(staked.amount.toString(), "1000");
+      assert.equal(reward.amount.toString(), "282");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "18");
+    });
     it("Harvest - collect reward tokens", async () => {
       await pln.connect(minter).approve(chef.address, "10000");
 
@@ -262,13 +301,16 @@ describe("SmartChefMember contract", function () {
         0
       );
       await mineNBlocksTo(aliceStartUnlockBlock + 5);
-      await chef.connect(alice).harvest(0);
-      await chef.connect(alice).harvest(1);
-      await chef.connect(bob).harvest(0);
+      await chef.connect(alice).withdraw(0, 0);
+      const [, reward,] = await getDepositInfo(alice.address, 0); // get first deposit
+      assert.equal(reward.amount.toString(), "282");
+      await chef.connect(alice).withdraw(0, 1);
+      await chef.connect(bob).withdraw(0, 0);
 
       assert.equal((await pln.balanceOf(alice.address)).toString(), "54");
       assert.equal((await pln.balanceOf(bob.address)).toString(), "36");
     });
+
   });
 
   describe("Recovery", function () {
@@ -294,8 +336,8 @@ describe("SmartChefMember contract", function () {
       assert.equal(packageInfo.blockPeriod.toString(), "100");
       assert.equal((await pln.balanceOf(minter.address)).toString(), "996100");
 
-      await chef.connect(minter).recoverTokenWrongAddress(alice.address, 0); // recover token from first deposit
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "997100");
+      await chef.connect(minter).adminWithdraw(alice.address, 0); // recover token from first deposit
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "997400");
       expect(await chef.isInvestor(alice.address)).to.be.true;
 
       const [staked1, reward1, packageInfo1] = await getDepositInfo(alice.address, 0); // get first deposit
@@ -304,7 +346,7 @@ describe("SmartChefMember contract", function () {
       assert.equal(packageInfo1.blockPeriod.toString(), "0");
       
       assert.equal((await pln.balanceOf(chef.address)).toString(), "2000");
-      assert.equal((await chef.reclaimableRewardAmount()).toString(), "300");
+      assert.equal((await chef.reclaimableRewardAmount()).toString(), "0");
 
       await expectRevert(
         chef.connect(alice).withdrawReclaimableRewardAmount(),
@@ -315,28 +357,10 @@ describe("SmartChefMember contract", function () {
       assert.equal((await chef.reclaimableRewardAmount()).toString(), "0");
       assert.equal((await pln.balanceOf(minter.address)).toString(), "997400");
 
-      await expectRevert(
-        chef
-        .connect(minter)
-        .depositToInvestorAfterRecoverWrongToken("1000", "300", 1, alice.address, 1),
-        "Cannot deposit"
-      );
-
-      await chef
-        .connect(minter)
-        .depositToInvestorAfterRecoverWrongToken("1000", "300", 1, alice.address, 0);
-        assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
-
-        const [staked2, reward2, packageInfo2] = await getDepositInfo(alice.address, 0); // get first deposit
-      assert.equal(staked2.amount.toString(), "1000");
-      assert.equal(reward2.amount.toString(), "300");
-      assert.equal(packageInfo2.blockPeriod.toString(), "400");
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "996100");
-
-      await chef.connect(minter).recoverTokenWrongAddress(alice.address, 0); // recover token from first deposit
-      await chef.connect(minter).recoverTokenWrongAddress(alice.address, 1); // recover token from second deposit
+      await chef.connect(minter).adminWithdraw(alice.address, 0); // recover token from first deposit
+      await chef.connect(minter).adminWithdraw(alice.address, 1); // recover token from second deposit
       expect(await chef.isInvestor(alice.address)).to.be.false;
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "999100");
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "1000000");
     });
   });
 
