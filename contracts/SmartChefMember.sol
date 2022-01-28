@@ -67,7 +67,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     PackageInfo[] public packageInfo;
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
-    event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
+    event AdminWithdraw(address indexed user, uint256 stakedAmount, uint256 rewardAmount);
     event Harvest(address indexed user);
     event DepositToInvestor(address indexed user, uint256 amount);
     event NewPoolLimit(uint256 poolLimitPerUser);
@@ -188,10 +188,10 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
         DepositInfo storage staked = balanceInfo.staked;
         DepositInfo storage reward = balanceInfo.reward;
-        uint256 witdrawPercent =  _amount.mul(PRECISION_FACTOR).div(staked.amount);
+        // uint256 witdrawPercent =  _amount.mul(PRECISION_FACTOR).div(staked.amount);       
+        uint256 stakedAmountBefore = staked.amount;
 
-        require(staked.amount >= _amount, "Amount to withdraw too high");
-        uint256 pending = _pendingUnlockedToken(reward);
+        require(staked.amount >= _amount, "Amount to withdraw too high");        
 
         if (_amount > 0) {
             uint256 pendingUnlocked = _pendingUnlockedToken(staked);
@@ -200,17 +200,29 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
             stakedToken.safeTransfer(address(msg.sender), _amount);
         }
 
-        if (pending > 0) {
-            reward.amount = reward.amount.sub(pending);
-            safeRewardTransfer(address(msg.sender), pending);
+        uint256 pendingRewardAmount = _pendingUnlockedToken(reward);
+
+        if (pendingRewardAmount > 0) {
+            reward.amount = reward.amount.sub(pendingRewardAmount);
+            safeRewardTransfer(address(msg.sender), pendingRewardAmount);
         }
+
+        // adjust remaining reward        
+        uint256 remainingRewardAmount = staked.amount == 0 ? 0 : reward.amount * staked.amount / stakedAmountBefore;
+        uint256 userReclaimableRewardAmount = reward.amount - remainingRewardAmount;
         
-        reward.initialAmount = reward.initialAmount.sub(witdrawPercent.mul(reward.initialAmount).div(PRECISION_FACTOR));
-        reclaimableRewardAmount = reclaimableRewardAmount.add(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
-        reward.amount = reward.amount.sub(witdrawPercent.mul(reward.amount).div(PRECISION_FACTOR));
+        if (_amount > 0) {
+            reward.initialAmount = remainingRewardAmount;        
+        }
+        reward.amount = remainingRewardAmount;
+        reward.startUnlockBlock = block.number;        
+        
+        reclaimableRewardAmount = reclaimableRewardAmount + userReclaimableRewardAmount;
         
         emit Withdraw(msg.sender, _amount);
     }
+
+
 
     /*
      * @notice Withdraw staked tokens without caring about rewards rewards
@@ -218,37 +230,38 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
      * @param _depositId: deposit id
      * @dev Only callable by owner. Needs to be for emergency.
      */
-    function recoverTokenWrongAddress(address _from, uint256 _depositId) external onlyOwner nonReentrant {
-        UserInfo storage user = userInfo[_from];
-        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
+    function adminWithdraw(address _from, uint256 _depositId) external onlyOwner nonReentrant {
+        UserInfo storage user = userInfo[_from];        
+        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];        
         DepositInfo storage staked = balanceInfo.staked;
         DepositInfo storage reward = balanceInfo.reward;
         PackageInfo storage package = balanceInfo.packageInfo;
 
-        package.blockPeriod = 0;
+        package.blockPeriod = 0;        
 
-        uint256 stakedAmountToTransfer = staked.amount;
-        staked.initialAmount = 0;
-        staked.amount = 0;
-        staked.startUnlockBlock = 0;
-        staked.endUnlockBlock = 0;
-
-        if (stakedAmountToTransfer > 0) {
-            stakedToken.safeTransfer(address(msg.sender), stakedAmountToTransfer);
-            uint256 totalStaked = _getTotalStaked(_from);
-            if (totalStaked == 0) {
-                EnumerableSet.remove(_investors, _from);
-            }
+        if (staked.amount > 0) {
+            stakedToken.safeTransfer(address(msg.sender), staked.amount);
+            staked.amount = 0;            
         }
 
-        uint256 rewardAmount = reward.amount;
-        reclaimableRewardAmount = reclaimableRewardAmount.add(rewardAmount);
-        reward.initialAmount = 0;
-        reward.amount = 0;
-        reward.startUnlockBlock = 0;
-        reward.endUnlockBlock = 0;
+        if (reward.amount > 0) {            
+            safeRewardTransfer(msg.sender, reward.amount);
+            reward.amount = 0;            
+        }
 
-        emit AdminTokenRecoveryWrongAddress(_from, stakedAmountToTransfer);
+        // clean up
+        if (_depositId + 1 == user.numDeposit) {
+            delete user.balanceInfo[_depositId];
+            user.numDeposit--;
+        }
+
+        uint256 totalStaked = _getTotalStaked(_from);
+        uint256 totalReward = _getTotalReward(_from);
+        if (totalStaked == 0 && totalReward == 0) {
+            EnumerableSet.remove(_investors, _from);
+        }
+
+        emit AdminWithdraw(_from, totalStaked, totalReward);
     }
 
     /**
@@ -351,6 +364,17 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         return _pendingUnlockedToken(balanceInfo.reward);
     }
 
+    function pendingTotalReward(address _user) external view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        uint256 totalRewardAmount = 0;
+        for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
+            BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
+            totalRewardAmount = totalRewardAmount.add(_pendingUnlockedToken(balanceInfo.reward));
+        }
+
+        return totalRewardAmount;
+    }
+
     /*
      * @notice View function to see pending reward on frontend.
      * @param _user: user address
@@ -362,6 +386,17 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         BalanceInfo memory balanceInfo = user.balanceInfo[_depositId];
 
         return _pendingUnlockedToken(balanceInfo.staked);
+    }
+
+    function _pendingTotalStakedUnlockedToken(address _user) private view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        uint256 totalStakedAmount = 0;
+        for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
+            BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
+            totalStakedAmount = totalStakedAmount.add(_pendingUnlockedToken(balanceInfo.staked));
+        }
+
+        return totalStakedAmount;
     }
 
     // Return Pending unlocked token
@@ -383,6 +418,17 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
             BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
             totalAmount = totalAmount.add(balanceInfo.staked.amount);
+        }
+        return totalAmount;
+    }
+
+    // Return Total reward
+    function _getTotalReward(address _address) private view returns (uint256) {
+        UserInfo storage user = userInfo[_address];
+        uint256 totalAmount = 0;
+        for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
+            BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
+            totalAmount = totalAmount.add(balanceInfo.reward.amount);
         }
         return totalAmount;
     }
