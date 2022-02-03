@@ -49,25 +49,7 @@ describe("SmartChefMember contract", function () {
       );
     });
 
-    it("amount is equal to the deposit", async function () {
-      await pln.connect(minter).approve(chef.address, "5000");
-      await chef
-        .connect(minter)
-        .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
-      assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
-      const [aliceStaked] = await getDepositInfo(alice.address, 0);
-      const [bobStaked] = await getDepositInfo(bob.address, 0);
-
-      assert.equal(aliceStaked.amount.toString(), "1000");
-      assert.equal(aliceStaked.initialAmount.toString(), "1000");
-      assert.equal(bobStaked.amount.toString(), "2000");
-      assert.equal(bobStaked.initialAmount.toString(), "2000");
-    });
-
-    it("Limit Amount", async () => {
+    it("should not deposit more than limit amount", async () => {
       await pln.connect(minter).approve(chef.address, "100000");
 
       await expectRevert(
@@ -75,8 +57,21 @@ describe("SmartChefMember contract", function () {
         "User amount above limit"
       );
     });
+    
+    it("should get 1000 staked token and 300 reward when deposit 1000 PLN and 300 PLN reward", async function () {
+      await pln.connect(minter).approve(chef.address, "2000");
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+      assert.equal((await pln.balanceOf(chef.address)).toString(), "1000");
+      const [aliceStaked] = await getDepositInfo(alice.address, 0);
 
-    it("deposit more than 1, same pacakage", async () => {
+      assert.equal(aliceStaked.amount.toString(), "1000");
+      assert.equal(aliceStaked.initialAmount.toString(), "1000");
+      expect(await chef.isInvestor(alice.address)).to.be.true;
+    });
+
+    it("should get 2000 staked token and 600 reward when deposit 2000 PLN and 600 PLN reward, second deposit", async () => {
       await pln.connect(minter).approve(chef.address, "100000");
 
       await chef
@@ -86,129 +81,81 @@ describe("SmartChefMember contract", function () {
         .connect(minter)
         .depositToInvestor("2000", "600", 0, alice.address); // 2
 
-      const [staked] = await getDepositInfo(alice.address, 0);
-
-      assert.equal(staked.amount.toString(), "1000");
-      assert.equal(staked.initialAmount.toString(), "1000");
-
       const [staked2] = await getDepositInfo(alice.address, 1);
 
       assert.equal(staked2.amount.toString(), "2000");
       assert.equal(staked2.initialAmount.toString(), "2000");
     });
-
-    it("deposit more than 1, difference pacakage", async () => {
-      await pln.connect(minter).approve(chef.address, "100000");
-
-      await chef
-        .connect(minter)
-        .depositToInvestor("1000", "300", 0, alice.address); // first deposit package 1
-
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 1, alice.address); // second deposit package 2
-
-      const [staked, reward, packageInfo] = await getDepositInfo(alice.address, 0);
-
-      assert.equal(staked.amount.toString(), "1000");
-      assert.equal(staked.initialAmount.toString(), "1000");
-      assert.equal(packageInfo.blockPeriod.toString(), "100");
-
-      const [staked2, reward2, packageInfo2] = await getDepositInfo(alice.address, 1);
-
-      assert.equal(staked2.amount.toString(), "2000");
-      assert.equal(staked2.initialAmount.toString(), "2000");
-      assert.equal(packageInfo2.blockPeriod.toString(), "400");
-    });
   });
 
   describe("pendingUnlockedToken", function () {
-    it("Staked Token", async () => {
+    it("should get 50 unlocked token for 1000 staked token in 5 block period", async () => {
       await pln.connect(minter).approve(chef.address, "5000");
 
       await chef
         .connect(minter)
         .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
-
-      assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
 
       const startUnlockBlock = await getStartUnlockBlocks(alice.address, 0);
-      const endUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
-      await mineNBlocksTo(startUnlockBlock + 1);
+      await mineNBlocksTo(startUnlockBlock + 5);
 
       assert.equal(
         (await chef.pendingStakedUnlockedToken(alice.address, 0)).toString(),
-        "10"
+        "50"
       );
+    });
 
-      await chef.connect(alice).withdraw("2", 0);
+    it("should get 1000 unlocked token for 1000 staked token when current block = end block", async () => {
+      await pln.connect(minter).approve(chef.address, "5000");
 
-      const startUnlockBlockBob = await getStartUnlockBlocks(bob.address, 0);
-      const endUnlockBlockBob = await getEndUnlockBlocks(bob.address, 0);
-      await mineNBlocksTo(startUnlockBlockBob + 8);
+      await chef
+        .connect(minter)
+        .depositToInvestor("1000", "300", 0, alice.address);
+
+      const endUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
+      await mineNBlocksTo(endUnlockBlock);
 
       assert.equal(
-        (await chef.pendingStakedUnlockedToken(bob.address, 0)).toString(),
-        "160"
+        (await chef.pendingStakedUnlockedToken(alice.address, 0)).toString(),
+        "1000"
       );
-      await mineNBlocksTo(endUnlockBlockBob);
-
-      assert.equal(
-        (await chef.pendingStakedUnlockedToken(bob.address, 0)).toString(),
-        "2000"
-      );
-      await chef.connect(bob).withdraw("2000", 0);
     });
   });
 
   describe("Withdraw", function () {
-    it("withdraw staked tokens and collect reward tokens, CurrentBlock == EndBlock", async () => {
+    it("should get 1000 PLN and 300 PLN reward when withdraw 1000 in current block = end block for 1000 staked", async () => {
       await pln.connect(minter).approve(chef.address, "5000");
 
       await chef
         .connect(minter)
         .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
 
       const aliceEndUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
       await mineNBlocksTo(aliceEndUnlockBlock);
-      await chef.connect(alice).withdraw("600", 0);
+      await chef.connect(alice).withdraw("1000", 0);
 
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "900");
-
-      // assert.equal((await pln.balanceOf(bob.address)).toString(), "2000");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "1300");
     });
 
-    it("withdraw staked tokens and collect reward tokens from second deposit, CurrentBlock == EndBlock", async () => {
+    it("should get 1000 PLN and 300 PLN reward when withdraw 1000 in current block > end block for 1000 staked", async () => {
       await pln.connect(minter).approve(chef.address, "5000");
 
       await chef
         .connect(minter)
         .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, alice.address);
 
       const aliceEndUnlockBlock = await getEndUnlockBlocks(alice.address, 0);
-      await mineNBlocksTo(aliceEndUnlockBlock);
-      await chef.connect(alice).withdraw("200", 1);
+      await mineNBlocksTo(aliceEndUnlockBlock + 20);
+      await chef.connect(alice).withdraw("1000", 0);
 
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "800");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "1300");
     });
 
-    it("withdraw staked tokens and collect reward tokens, StartBlock < CurrentBlock < EndBlock", async () => {
+    it("should get 1000 PLN and 330 PLN reward when withdraw 1000 in 10 block period for 10000 staked", async () => {
       await pln.connect(minter).approve(chef.address, "50000");
       await chef
         .connect(minter)
         .depositToInvestor("10000", "3000", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("20000", "6000", 0, bob.address);
 
       const aliceStartUnlockBlock = await getStartUnlockBlocks(
         alice.address,
@@ -217,7 +164,6 @@ describe("SmartChefMember contract", function () {
       await mineNBlocksTo(aliceStartUnlockBlock + 10);
 
       await chef.connect(alice).withdraw("1000", 0);
-      assert.equal((await chef.reclaimableRewardAmount()).toString(), "267");
       assert.equal((await pln.balanceOf(alice.address)).toString(), "1330");
     });
 
@@ -226,9 +172,6 @@ describe("SmartChefMember contract", function () {
       await chef
         .connect(minter)
         .depositToInvestor("1000", "300", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
 
       await mineNBlocks(1);
 
@@ -245,31 +188,22 @@ describe("SmartChefMember contract", function () {
   });
 
   describe("Harvest", function () {
-    it("should get 50 reward for 1000 reward in 5 block period", async() => {
+    it("should get 50 reward for 1000 reward in 5 block period", async () => {
       await pln.connect(minter).approve(chef.address, "100000");
-      
+
       var result = await chef
         .connect(minter)
         .depositToInvestor("10000", "1000", 0, alice.address);
       await mineNBlocks(5);
       var withdrawResult = await chef.connect(alice).withdraw(0, 0);
       var blockCount = withdrawResult.blockNumber - result.blockNumber;
-      assert.equal((await pln.balanceOf(alice.address)).toString(), blockCount * 10);
+      assert.equal(
+        (await pln.balanceOf(alice.address)).toString(),
+        blockCount * 10
+      );
     });
 
-    it("should get 15 reward for 300 reward in 5 block period", async() => {
-      await pln.connect(minter).approve(chef.address, "10000");
-
-      await chef
-        .connect(minter)
-        .depositToInvestor("1000", "300", 0, alice.address);
-
-      await mineNBlocks(5);
-      await chef.connect(alice).withdraw(0, 0);
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "18");
-    });
-    
-    it("should get only reward if withdraw with amount = 0", async() => {
+    it("should get only reward if withdraw with amount = 0", async () => {
       await pln.connect(minter).approve(chef.address, "10000");
 
       await chef
@@ -279,12 +213,13 @@ describe("SmartChefMember contract", function () {
       await mineNBlocks(5);
       await chef.connect(alice).withdraw(0, 0);
 
-      const [staked, reward,] = await getDepositInfo(alice.address, 0); // get first deposit
+      const [staked, reward] = await getDepositInfo(alice.address, 0); // get first deposit
       assert.equal(staked.amount.toString(), "1000");
       assert.equal(reward.amount.toString(), "282");
       assert.equal((await pln.balanceOf(alice.address)).toString(), "18");
     });
-    it("Harvest - collect reward tokens", async () => {
+
+    it("should get 36 reward for 600 reward in 5 block period from second deposit", async () => {
       await pln.connect(minter).approve(chef.address, "10000");
 
       await chef
@@ -293,74 +228,44 @@ describe("SmartChefMember contract", function () {
       await chef
         .connect(minter)
         .depositToInvestor("2000", "600", 0, alice.address);
-      await chef
-        .connect(minter)
-        .depositToInvestor("2000", "600", 0, bob.address);
       const aliceStartUnlockBlock = await getStartUnlockBlocks(
         alice.address,
-        0
+        1
       );
       await mineNBlocksTo(aliceStartUnlockBlock + 5);
-      await chef.connect(alice).withdraw(0, 0);
-      const [, reward,] = await getDepositInfo(alice.address, 0); // get first deposit
-      assert.equal(reward.amount.toString(), "282");
       await chef.connect(alice).withdraw(0, 1);
-      await chef.connect(bob).withdraw(0, 0);
 
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "54");
-      assert.equal((await pln.balanceOf(bob.address)).toString(), "36");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "36");
     });
-
   });
 
   describe("Recovery", function () {
-    it("recover Token and deposit again", async () => {
+    it("should get 1300 PLN for 1000 staked token and 300 reward", async () => {
       await pln.connect(minter).approve(chef.address, "10000");
 
       await chef
         .connect(minter)
         .depositToInvestor("1000", "300", 0, alice.address);
+      await chef.connect(minter).adminWithdraw(alice.address, 0);
+      assert.equal((await pln.balanceOf(minter.address)).toString(), "1000000");
+      expect(await chef.isInvestor(alice.address)).to.be.false;
+    });
+
+    it("should get 267 PLN from reclaimable reward when withdraw 1000 PLN in 10 block period", async () => {
+      await pln.connect(minter).approve(chef.address, "20000");
+
       await chef
         .connect(minter)
-        .depositToInvestor("2000", "600", 0, alice.address);
+        .depositToInvestor("10000", "3000", 0, alice.address);
       const aliceStartUnlockBlock = await getStartUnlockBlocks(
         alice.address,
         0
       );
-
-      assert.equal((await pln.balanceOf(chef.address)).toString(), "3000");
-
-      const [staked, reward, packageInfo] = await getDepositInfo(alice.address, 0); // get first deposit
-      assert.equal(staked.amount.toString(), "1000");
-      assert.equal(reward.amount.toString(), "300");
-      assert.equal(packageInfo.blockPeriod.toString(), "100");
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "996100");
-
-      await chef.connect(minter).adminWithdraw(alice.address, 0); // recover token from first deposit
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "997400");
-      expect(await chef.isInvestor(alice.address)).to.be.true;
-
-      const [staked1, reward1, packageInfo1] = await getDepositInfo(alice.address, 0); // get first deposit
-      assert.equal(staked1.amount.toString(), "0");
-      assert.equal(reward1.amount.toString(), "0");
-      assert.equal(packageInfo1.blockPeriod.toString(), "0");
-      
-      assert.equal((await pln.balanceOf(chef.address)).toString(), "2000");
-      assert.equal((await chef.reclaimableRewardAmount()).toString(), "0");
-
-      await expectRevert(
-        chef.connect(alice).withdrawReclaimableRewardAmount(),
-        "Ownable: caller is not the owner"
-      );
-      await chef.connect(minter).withdrawReclaimableRewardAmount();
-
-      assert.equal((await chef.reclaimableRewardAmount()).toString(), "0");
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "997400");
-
-      await chef.connect(minter).adminWithdraw(alice.address, 0); // recover token from first deposit
-      await chef.connect(minter).adminWithdraw(alice.address, 1); // recover token from second deposit
-      expect(await chef.isInvestor(alice.address)).to.be.false;
-      assert.equal((await pln.balanceOf(minter.address)).toString(), "1000000");
+      await mineNBlocksTo(aliceStartUnlockBlock + 10);
+      await chef.connect(alice).withdraw("1000", 0);
+      assert.equal((await chef.reclaimableRewardAmount()).toString(), "267");
+      await chef.connect(minter).withdrawReclaimableRewardAmount(bob.address);
+      assert.equal((await pln.balanceOf(bob.address)).toString(), "267");
     });
   });
 
