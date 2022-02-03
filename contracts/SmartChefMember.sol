@@ -24,9 +24,6 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
     // The pool limit (0 if none)
     uint256 public poolLimitPerUser;
 
-    // The precision factor
-    uint256 public PRECISION_FACTOR;
-
     // The reward token
     IBEP20 public rewardToken;
 
@@ -97,8 +94,6 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
 
         uint256 decimalsRewardToken = uint256(rewardToken.decimals());
         require(decimalsRewardToken < 30, "Must be inferior to 30");
-
-        PRECISION_FACTOR = uint256(10**(uint256(30).sub(decimalsRewardToken)));
     }
 
     function packageLength() external view returns (uint256) {
@@ -187,8 +182,7 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         UserInfo storage user = userInfo[msg.sender];
         BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
         DepositInfo storage staked = balanceInfo.staked;
-        DepositInfo storage reward = balanceInfo.reward;
-        // uint256 witdrawPercent =  _amount.mul(PRECISION_FACTOR).div(staked.amount);       
+        DepositInfo storage reward = balanceInfo.reward;    
         uint256 stakedAmountBefore = staked.amount;
 
         require(staked.amount >= _amount, "Amount to withdraw too high");        
@@ -283,54 +277,12 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
      * @notice It allows the admin to recover reward.
      * @dev This function is only callable by admin.
      */
-    function withdrawReclaimableRewardAmount() external onlyOwner {
+    function withdrawReclaimableRewardAmount(address _to) external onlyOwner {
         uint256 amount = reclaimableRewardAmount;
         if (reclaimableRewardAmount > 0) {
             reclaimableRewardAmount = reclaimableRewardAmount.sub(amount);
-            safeRewardTransfer(address(msg.sender), amount);
+            safeRewardTransfer(_to, amount);
         }
-    }
-
-    /*
-     * @notice Deposit staked tokens (if any)
-     * @param _amount: amount to deposit (in stakedTokens)
-     * @param _rewardAmount: reward amount to deposit (in reward)
-     * @param _packageId: package to deposit
-     * @param _address: user address
-     * @param _depositId: deposit id
-     */
-    function depositToInvestorAfterRecoverWrongToken(uint256 _amount, uint256 _rewardAmount, uint256 _packageId, address _address, uint256 _depositId) public onlyOwner {
-        PackageInfo memory package = packageInfo[_packageId];
-        UserInfo storage user = userInfo[_address];
-        BalanceInfo storage balanceInfo = user.balanceInfo[_depositId];
-        
-        require(_depositId < user.numDeposit, "deposit PLEARN by depositToInvestor");
-        require(balanceInfo.staked.amount == 0, "Cannot deposit");
-        require(balanceInfo.reward.amount == 0, "Cannot deposit");
-
-        if (hasUserLimit) {
-            require(_amount <= poolLimitPerUser, "User amount above limit");
-        }
-
-        if (_amount > 0 && _rewardAmount > 0) {
-            balanceInfo.staked = DepositInfo({initialAmount: _amount, 
-            amount: _amount,
-            startUnlockBlock: block.number,
-            endUnlockBlock: block.number.add(package.blockPeriod)});
-
-            balanceInfo.reward = DepositInfo({initialAmount: _rewardAmount, 
-            amount: _rewardAmount,
-            startUnlockBlock: block.number,
-            endUnlockBlock: block.number.add(package.blockPeriod)});
-
-            balanceInfo.packageInfo = package;
-
-            stakedToken.safeTransferFrom(address(msg.sender), address(this), _amount);
-            stakedToken.safeTransferFrom(address(msg.sender), address(treasury), _rewardAmount);
-            EnumerableSet.add(_investors, _address);
-        }
-
-        emit DepositToInvestor(_address, _amount);
     }
 
     /*
@@ -364,17 +316,6 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         return _pendingUnlockedToken(balanceInfo.reward);
     }
 
-    function pendingTotalReward(address _user) external view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
-        uint256 totalRewardAmount = 0;
-        for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
-            BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
-            totalRewardAmount = totalRewardAmount.add(_pendingUnlockedToken(balanceInfo.reward));
-        }
-
-        return totalRewardAmount;
-    }
-
     /*
      * @notice View function to see pending reward on frontend.
      * @param _user: user address
@@ -386,17 +327,6 @@ contract SmartChefMember is Ownable, ReentrancyGuard {
         BalanceInfo memory balanceInfo = user.balanceInfo[_depositId];
 
         return _pendingUnlockedToken(balanceInfo.staked);
-    }
-
-    function _pendingTotalStakedUnlockedToken(address _user) private view returns (uint256) {
-        UserInfo storage user = userInfo[_user];
-        uint256 totalStakedAmount = 0;
-        for (uint256 depositId = 0; depositId < user.numDeposit; ++depositId) {
-            BalanceInfo memory balanceInfo = user.balanceInfo[depositId];
-            totalStakedAmount = totalStakedAmount.add(_pendingUnlockedToken(balanceInfo.staked));
-        }
-
-        return totalStakedAmount;
     }
 
     // Return Pending unlocked token
