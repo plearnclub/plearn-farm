@@ -60,7 +60,6 @@ contract LockedPool is Ownable, ReentrancyGuard {
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
     event Deposit(address indexed user, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 amount);
     event NewStartBlocks(uint256 startBlock);
     event NewRewardPerBlock(uint256 rewardPerBlock);
     event NewPoolLimit(uint256 poolLimitPerUser);
@@ -69,9 +68,10 @@ contract LockedPool is Ownable, ReentrancyGuard {
     /*
      * @param _stakedToken: staked token address
      * @param _rewardToken: reward token address
+     * @param _rewardTreasury: reward treasury address
+     * @param _pendingWithdrawal: pending Withdrawal address
      * @param _rewardPerBlock: reward per block (in rewardToken)
      * @param _startBlock: start block
-     * @param _bonusEndBlock: end block
      * @param _poolLimitPerUser: pool limit per user in stakedToken (if any, else 0)
      */
     constructor(
@@ -177,15 +177,6 @@ contract LockedPool is Ownable, ReentrancyGuard {
 
         emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
     }
-
-    /*
-     * @notice Stop rewards
-     * @dev Only callable by owner
-     */
-    // function stopReward() external onlyOwner {
-    //     bonusEndBlock = block.number;
-    //     emit RewardsStop(block.number);
-    // }
 
     /*
      * @notice Update pool limit per user

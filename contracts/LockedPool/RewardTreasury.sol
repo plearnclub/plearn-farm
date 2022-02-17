@@ -69,7 +69,7 @@ contract RewardTreasury is Ownable {
     function addAdmin(address _addAdmin) public onlyOwner returns (bool) {
         require(
             _addAdmin != address(0),
-            "SmartChefFoundingInvestorTreasury: _addAdmin is the zero address"
+            "RewardTreasury: _addAdmin is the zero address"
         );
         return EnumerableSet.add(_admins, _addAdmin);
     }
@@ -77,7 +77,7 @@ contract RewardTreasury is Ownable {
     function delAdmin(address _delAdmin) public onlyOwner returns (bool) {
         require(
             _delAdmin != address(0),
-            "SmartChefFoundingInvestorTreasury: _delAdmin is the zero address"
+            "RewardTreasury: _delAdmin is the zero address"
         );
         return EnumerableSet.remove(_admins, _delAdmin);
     }
@@ -91,7 +91,7 @@ contract RewardTreasury is Ownable {
     }
 
     function getAdmin(uint256 _index) public view onlyOwner returns (address) {
-        require(_index <= getAdminLength() - 1, "SmartChefFoundingInvestorTreasury: index out of bounds");
+        require(_index <= getAdminLength() - 1, "RewardTreasury: index out of bounds");
         return EnumerableSet.at(_admins, _index);
     }
 

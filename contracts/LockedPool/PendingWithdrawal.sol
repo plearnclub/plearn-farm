@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "../token/BEP20/IBEP20.sol";
 import "../token/BEP20/SafeBEP20.sol";
 
-// Based on SNX MultiRewards by iamdefinitelyahuman - https://github.com/iamdefinitelyahuman/multi-rewards
 contract PendingWithdrawal is ReentrancyGuard, Ownable {
 
     using SafeMath for uint256;
@@ -123,11 +122,10 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
 
     /* ========== RESTRICTED FUNCTIONS ========== */
 
-    // Added to support recovering LP Rewards from other systems such as BAL to be distributed to holders
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
-        require(tokenAddress != address(lockedToken), "Cannot withdraw staking token");
-        IBEP20(tokenAddress).safeTransfer(owner(), tokenAmount);
-        emit Recovered(tokenAddress, tokenAmount);
+    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
+        require(_tokenAddress != address(lockedToken), "Cannot withdraw staking token");
+        IBEP20(_tokenAddress).safeTransfer(owner(), _tokenAmount);
+        emit Recovered(_tokenAddress, _tokenAmount);
     }
 
 
