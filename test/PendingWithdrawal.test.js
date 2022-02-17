@@ -5,7 +5,7 @@ const PlearnToken = artifacts.require("PlearnToken");
 const { BigNumber, utils } = ethers;
 const perBlock = "100";
 
-describe("PendingTreasury contract", function () {
+describe("PendingWithdrawal contract", function () {
   let pln;
   let earn;
   let lp1;
@@ -15,7 +15,7 @@ describe("PendingTreasury contract", function () {
   let masterChef;
   let lockedPool;
   let rewardTreasury;
-  let pendingTreasury;
+  let pendingWithdrawal;
   let alice;
   let bob;
   let carol;
@@ -31,7 +31,7 @@ describe("PendingTreasury contract", function () {
     let PlearnEarn = await ethers.getContractFactory("PlearnEarn");
     let MasterChef = await ethers.getContractFactory("MasterChef");
     let RewardTreasury = await ethers.getContractFactory("RewardTreasury");
-    let PendingTreasury = await ethers.getContractFactory("PendingTreasury");
+    let PendingWithdrawal = await ethers.getContractFactory("PendingWithdrawal");
     let LockedPool = await ethers.getContractFactory("LockedPool");
 
     [minter, alice, bob, carol, dev, ref, safu] = await ethers.getSigners();
@@ -70,14 +70,14 @@ describe("PendingTreasury contract", function () {
       "4", // masterchef pool id
       lockedToken.address
     );
-    pendingTreasury = await PendingTreasury.deploy(pln.address, 86400 * 21);
+    pendingWithdrawal = await PendingWithdrawal.deploy(pln.address, 86400 * 21);
 
     lockedPoolStartBlock = startBlock + 20;
     lockedPool = await LockedPool.deploy(
       pln.address, // staked token
       pln.address, // reward token
       rewardTreasury.address,
-      pendingTreasury.address,
+      pendingWithdrawal.address,
       "20", // token per block
       lockedPoolStartBlock,
       "4000" // limit
@@ -95,20 +95,53 @@ describe("PendingTreasury contract", function () {
   });
 
   describe("withdrawExpiredLocks", function () {
-    it("should get 1000 PLN when unlock time has passed", async () => {
+    it("should not withdraw because current time less than unlock time", async () => {
       await pln.mint(alice.address, "1000");
-      let currentBlock = await ethers.provider.getBlockNumber();
       await lockedPool.connect(alice).deposit("1000");
       await lockedPool.connect(alice).withdraw("1000");
 
-      const [,, locked,] = await pendingTreasury.lockedBalances(alice.address);
+      const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
+      assert.equal(locked.toString(), "1000");
+      await increaseTime(1014400);
+      
+      const [total, unlockable,,] = await pendingWithdrawal.lockedBalances(alice.address);
+      assert.equal(unlockable.toString(), "0");
+      assert.equal(total.toString(), "1000");
+    });
+
+    it("should get 1000 PLN when unlock time has passed", async () => {
+      await pln.mint(alice.address, "1000");
+      await lockedPool.connect(alice).deposit("1000");
+      await lockedPool.connect(alice).withdraw("1000");
+
+      const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
       assert.equal(locked.toString(), "1000");
       await increaseTime(1814400);
-      const [, unlockable,,] = await pendingTreasury.lockedBalances(alice.address);
+      const [, unlockable,,] = await pendingWithdrawal.lockedBalances(alice.address);
       assert.equal(unlockable.toString(), "1000");
-      await pendingTreasury.connect(alice).withdrawExpiredLocks();
-      const [total,,,] = await pendingTreasury.lockedBalances(alice.address);
+      await pendingWithdrawal.connect(alice).withdrawExpiredLocks();
+      const [total,,,] = await pendingWithdrawal.lockedBalances(alice.address);
       assert.equal(total.toString(), "0");
+    });
+
+    it("should get 2000 PLN from 2 withdraw when unlock time has passed", async () => {
+      await pln.mint(alice.address, "2000");
+      await lockedPool.connect(alice).deposit("2000");
+      await lockedPool.connect(alice).withdraw("1000");
+
+      await increaseTime(1014400);
+      await lockedPool.connect(alice).withdraw("1000");
+
+      const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
+      assert.equal(locked.toString(), "2000");
+      await increaseTime(1814400);
+      
+      const [, unlockable,,] = await pendingWithdrawal.lockedBalances(alice.address);
+      assert.equal(unlockable.toString(), "2000");
+      await pendingWithdrawal.connect(alice).withdrawExpiredLocks();
+      const [total,,,] = await pendingWithdrawal.lockedBalances(alice.address);
+      assert.equal(total.toString(), "0");
+      
     });
   });
 

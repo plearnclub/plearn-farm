@@ -10,7 +10,7 @@ import "../token/BEP20/IBEP20.sol";
 import "../token/BEP20/SafeBEP20.sol";
 
 // Based on SNX MultiRewards by iamdefinitelyahuman - https://github.com/iamdefinitelyahuman/multi-rewards
-contract PendingTreasury is ReentrancyGuard, Ownable {
+contract PendingWithdrawal is ReentrancyGuard, Ownable {
 
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;

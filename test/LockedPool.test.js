@@ -15,7 +15,7 @@ describe("LockedPool contract", function () {
   let masterChef;
   let lockedPool;
   let rewardTreasury;
-  let pendingTreasury;
+  let pendingWithdrawal;
   let alice;
   let bob;
   let carol;
@@ -31,7 +31,7 @@ describe("LockedPool contract", function () {
     let PlearnEarn = await ethers.getContractFactory("PlearnEarn");
     let MasterChef = await ethers.getContractFactory("MasterChef");
     let RewardTreasury = await ethers.getContractFactory("RewardTreasury");
-    let PendingTreasury = await ethers.getContractFactory("PendingTreasury");
+    let PendingWithdrawal = await ethers.getContractFactory("PendingWithdrawal");
     let LockedPool = await ethers.getContractFactory("LockedPool");
 
     [minter, alice, bob, carol, dev, ref, safu] = await ethers.getSigners();
@@ -70,14 +70,14 @@ describe("LockedPool contract", function () {
       "4", // masterchef pool id
       lockedToken.address
     );
-    pendingTreasury = await PendingTreasury.deploy(pln.address, 86400 * 21);
+    pendingWithdrawal = await PendingWithdrawal.deploy(pln.address, 86400 * 21);
 
     lockedPoolStartBlock = startBlock + 20;
     lockedPool = await LockedPool.deploy(
       pln.address, // staked token
       pln.address, // reward token
       rewardTreasury.address,
-      pendingTreasury.address,
+      pendingWithdrawal.address,
       "20", // token per block
       lockedPoolStartBlock,
       "4000" // limit
@@ -146,7 +146,7 @@ describe("LockedPool contract", function () {
       await lockedPool.connect(alice).withdraw("1000");
 
       assert.equal((await pln.balanceOf(alice.address)).toString(), "100");
-      const [,, locked,] = await pendingTreasury.lockedBalances(alice.address);
+      const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
       assert.equal(locked.toString(), "1000");
     });
   });
