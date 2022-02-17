@@ -22,7 +22,7 @@ contract RewardTreasury is Ownable {
     // The Plearn TOKEN!
     PlearnToken public plearn;
 
-    address public masterChef;
+    IMasterChef public masterChef;
 
     address public lockedPoolToken;
 
@@ -32,7 +32,7 @@ contract RewardTreasury is Ownable {
     event WithdrawFromMasterChef(address indexed user, uint256 indexed pid, uint256 amount);
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
 
-    constructor(PlearnToken _plearn, address _masterChef, uint256 _masterChefPoolId, address _lockedPoolToken) {
+    constructor(PlearnToken _plearn, IMasterChef _masterChef, uint256 _masterChefPoolId, address _lockedPoolToken) {
         plearn = _plearn;
         masterChef = _masterChef;
         masterChefPoolId = _masterChefPoolId;
@@ -46,7 +46,7 @@ contract RewardTreasury is Ownable {
     }
 
     function depositToMasterChef(uint256 _amount) public onlyOwner {
-        IBEP20(lockedPoolToken).approve(masterChef, _amount);
+        IBEP20(lockedPoolToken).approve(address(masterChef), _amount);
         IBEP20(lockedPoolToken).safeTransferFrom(address(msg.sender), address(this), _amount);
         IMasterChef(masterChef).deposit(masterChefPoolId, _amount);
 

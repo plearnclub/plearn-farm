@@ -48,7 +48,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
 
     RewardTreasury public rewardTreasury;
 
-    address public pendingWithdrawal;
+    IPendingWithdrawal public pendingWithdrawal;
 
     // Info of each user that stakes tokens (stakedToken)
     mapping(address => UserInfo) public userInfo;
@@ -78,7 +78,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
         IBEP20 _stakedToken,
         IBEP20 _rewardToken,
         RewardTreasury _rewardTreasury,
-        address _pendingWithdrawal,
+        IPendingWithdrawal _pendingWithdrawal,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _poolLimitPerUser
@@ -150,8 +150,8 @@ contract LockedPool is Ownable, ReentrancyGuard {
 
         if (_amount > 0) {
             user.amount = user.amount.sub(_amount);
-            stakedToken.approve(pendingWithdrawal, _amount);
-            IPendingWithdrawal(pendingWithdrawal).lock(_amount, address(msg.sender));
+            stakedToken.approve(address(pendingWithdrawal), _amount);
+            pendingWithdrawal.lock(_amount, address(msg.sender));
         }
 
         if (pending > 0) {
