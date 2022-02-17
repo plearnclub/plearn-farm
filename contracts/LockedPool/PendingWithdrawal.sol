@@ -96,7 +96,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
             userLocks[_address][idx-1].amount = userLocks[_address][idx-1].amount.add(_amount);
         }
         lockedToken.safeTransferFrom(msg.sender, address(this), _amount);
-        emit Staked(msg.sender, _amount);
+        emit Locked(msg.sender, _amount);
     }
 
     // Withdraw all currently locked tokens where the unlock time has passed
@@ -131,9 +131,6 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
 
     /* ========== EVENTS ========== */
 
-    event Staked(address indexed user, uint256 amount);
-    event Withdrawn(address indexed user, uint256 amount);
-    event RewardPaid(address indexed user, address indexed rewardsToken, uint256 reward);
-    event RewardsDurationUpdated(address token, uint256 newDuration);
+    event Locked(address indexed user, uint256 amount);
     event Recovered(address token, uint256 amount);
 }
