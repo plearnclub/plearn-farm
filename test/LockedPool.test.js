@@ -149,13 +149,26 @@ describe("LockedPool contract", function () {
   });
 
   describe("Withdraw", function () {
-    it("should get 120 PLN reward and 1000 PLN in pending treasury when withdraw 1000 in in 5 block period for 1000 staked", async () => {
+    it("should get 120 PLN reward and 1000 PLN in pending withdrawal when withdraw 1000 in in 5 block period for 1000 staked", async () => {
       await pln.mint(alice.address, "1000");
       await lockedPool.connect(alice).deposit("1000");
       await mineNBlocksTo(lockedPoolStartBlock + 5);
       await lockedPool.connect(alice).withdraw("1000");
 
       assert.equal((await pln.balanceOf(alice.address)).toString(), "120");
+      const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
+      assert.equal(locked.toString(), "1000");
+    });
+  });
+
+  describe("EmergencyWithdraw", function () {
+    it("should get 0 PLN reward and 1000 PLN in pending withdrawal when withdraw 1000 in in 5 block period for 1000 staked", async () => {
+      await pln.mint(alice.address, "1000");
+      await lockedPool.connect(alice).deposit("1000");
+      await mineNBlocksTo(lockedPoolStartBlock + 5);
+      await lockedPool.connect(alice).emergencyWithdraw();
+
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "0");
       const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
       assert.equal(locked.toString(), "1000");
     });

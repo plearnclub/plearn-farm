@@ -63,6 +63,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
     event Deposit(address indexed user, uint256 amount);
+    event EmergencyWithdraw(address indexed user, uint256 amount);
     event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
     event NewRewardPerBlock(uint256 rewardPerBlock);
     event NewPoolLimit(uint256 poolLimitPerUser);
@@ -169,6 +170,24 @@ contract LockedPool is Ownable, ReentrancyGuard {
         user.rewardDebt = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR);
 
         emit Withdraw(msg.sender, _amount);
+    }
+
+    /*
+     * @notice Withdraw staked tokens without caring about rewards rewards
+     * @dev Needs to be for emergency.
+     */
+    function emergencyWithdraw() external nonReentrant {
+        UserInfo storage user = userInfo[msg.sender];
+        uint256 amountToTransfer = user.amount;
+        user.amount = 0;
+        user.rewardDebt = 0;
+
+        if (amountToTransfer > 0) {
+            stakedToken.approve(address(pendingWithdrawal), amountToTransfer);
+            pendingWithdrawal.lock(amountToTransfer, address(msg.sender));
+        }
+
+        emit EmergencyWithdraw(msg.sender, amountToTransfer);
     }
 
     /**
