@@ -35,10 +35,10 @@ describe("RewardTreasury contract", function () {
     this.plearnToken = await PlearnToken.new({ from: minter.address });
     pln = this.plearnToken;
     earn = await PlearnEarn.deploy(pln.address);
-    lp1 = await SimpleBEP20.deploy("LPToken", "LP1", "1000000");
-    lp2 = await SimpleBEP20.deploy("LPToken", "LP1", "1000000");
-    lp3 = await SimpleBEP20.deploy("LPToken", "LP1", "1000000");
-    lockedToken = await SimpleBEP20.deploy("Locked Pool Token", "LPT", 1);
+    lp1 = await SimpleBEP20.deploy("LPToken", "LP1", minter.address, "1000000");
+    lp2 = await SimpleBEP20.deploy("LPToken", "LP1", minter.address, "1000000");
+    lp3 = await SimpleBEP20.deploy("LPToken", "LP1", minter.address, "1000000");
+    lockedToken = await SimpleBEP20.deploy("Locked Pool Token", "LPT", minter.address, 1);
     masterChef = await upgrades.deployProxy(MasterChef, [
       pln.address,
       earn.address,
