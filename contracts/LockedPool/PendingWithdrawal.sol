@@ -17,8 +17,6 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
     /* ========== STATE VARIABLES ========== */
 
     struct Balances {
-        uint256 total;
-        uint256 unlocked;
         uint256 locked;
     }
     struct LockedBalance {
@@ -47,11 +45,6 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
 
 
     /* ========== VIEWS ========== */
-
-    // Total balance of an account, including unlocked, locked
-    function totalBalance(address user) view external returns (uint256 amount) {
-        return balances[user].total;
-    }
 
     // Information on a user's locked balances
     function lockedBalances(
@@ -86,7 +79,6 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
     function lock(uint256 _amount, address _address) external nonReentrant {
         require(_amount > 0, "Cannot stake 0");
         Balances storage bal = balances[_address];
-        bal.total = bal.total.add(_amount);
         bal.locked = bal.locked.add(_amount);
         uint256 unlockTime = block.timestamp.add(lockDuration);
         uint256 idx = userLocks[_address].length;
@@ -116,7 +108,6 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
             }
         }
         bal.locked = bal.locked.sub(amount);
-        bal.total = bal.total.sub(amount);
         lockedToken.safeTransfer(msg.sender, amount);
     }
 
