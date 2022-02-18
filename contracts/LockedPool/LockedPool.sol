@@ -25,6 +25,9 @@ contract LockedPool is Ownable, ReentrancyGuard {
     // Accrued token per share
     uint256 public accTokenPerShare;
 
+    // The block number when PLEARN mining ends.
+    uint256 public bonusEndBlock;
+
     // The block number when PLEARN mining starts.
     uint256 public startBlock;
 
@@ -60,9 +63,10 @@ contract LockedPool is Ownable, ReentrancyGuard {
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
     event Deposit(address indexed user, uint256 amount);
-    event NewStartBlocks(uint256 startBlock);
+    event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
     event NewRewardPerBlock(uint256 rewardPerBlock);
     event NewPoolLimit(uint256 poolLimitPerUser);
+    event RewardsStop(uint256 blockNumber);
     event Withdraw(address indexed user, uint256 amount);
 
     /*
@@ -72,6 +76,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
      * @param _pendingWithdrawal: pending Withdrawal address
      * @param _rewardPerBlock: reward per block (in rewardToken)
      * @param _startBlock: start block
+     * @param _bonusEndBlock: end block
      * @param _poolLimitPerUser: pool limit per user in stakedToken (if any, else 0)
      */
     constructor(
@@ -81,8 +86,10 @@ contract LockedPool is Ownable, ReentrancyGuard {
         IPendingWithdrawal _pendingWithdrawal,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
+        uint256 _bonusEndBlock,
         uint256 _poolLimitPerUser
     ) {
+        require(_startBlock < _bonusEndBlock, "StartBlock must be lower than endBlock");
         require(block.number < _startBlock, "StartBlock must be higher than current block");
 
         stakedToken = _stakedToken;
@@ -91,6 +98,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
         pendingWithdrawal = _pendingWithdrawal;
         rewardPerBlock = _rewardPerBlock;
         startBlock = _startBlock;
+        bonusEndBlock = _bonusEndBlock;
 
         if (_poolLimitPerUser > 0) {
             hasUserLimit = true;
@@ -179,6 +187,15 @@ contract LockedPool is Ownable, ReentrancyGuard {
     }
 
     /*
+     * @notice Stop rewards
+     * @dev Only callable by owner
+     */
+    function stopReward() external onlyOwner {
+        bonusEndBlock = block.number;
+        emit RewardsStop(block.number);
+    }
+
+    /*
      * @notice Update pool limit per user
      * @dev Only callable by owner.
      * @param _hasUserLimit: whether the limit remains forced
@@ -211,17 +228,20 @@ contract LockedPool is Ownable, ReentrancyGuard {
      * @notice It allows the owner to update start and end blocks
      * @dev This function is only callable by owner.
      * @param _startBlock: the new start block
+     * @param _bonusEndBlock: the new end block
      */
-    function updateStartBlocks(uint256 _startBlock) external onlyOwner {
+    function updateStartAndEndBlocks(uint256 _startBlock, uint256 _bonusEndBlock) external onlyOwner {
         require(block.number < startBlock, "Pool has started");
+        require(_startBlock < _bonusEndBlock, "New startBlock must be lower than new endBlock");
         require(block.number < _startBlock, "New startBlock must be higher than current block");
 
         startBlock = _startBlock;
+        bonusEndBlock = _bonusEndBlock;
 
         // Set the lastRewardBlock as the startBlock
         lastRewardBlock = startBlock;
 
-        emit NewStartBlocks(_startBlock);
+        emit NewStartAndEndBlocks(_startBlock, _bonusEndBlock);
     }
 
     /*
@@ -230,7 +250,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
      * @return Pending reward for a given user
      */
     function pendingReward(address _user) external view returns (uint256) {
-        UserInfo memory user = userInfo[_user];
+        UserInfo storage user = userInfo[_user];
         uint256 stakedTokenSupply = stakedToken.balanceOf(address(this));
         if (block.number > lastRewardBlock && stakedTokenSupply != 0) {
             uint256 multiplier = _getMultiplier(lastRewardBlock, block.number);
@@ -269,8 +289,14 @@ contract LockedPool is Ownable, ReentrancyGuard {
      * @param _from: block to start
      * @param _to: block to finish
      */
-    function _getMultiplier(uint256 _from, uint256 _to) internal pure returns (uint256) {
-        return _to.sub(_from);
+    function _getMultiplier(uint256 _from, uint256 _to) internal view returns (uint256) {
+        if (_to <= bonusEndBlock) {
+            return _to.sub(_from);
+        } else if (_from >= bonusEndBlock) {
+            return 0;
+        } else {
+            return bonusEndBlock.sub(_from);
+        }
     }
 
     /*

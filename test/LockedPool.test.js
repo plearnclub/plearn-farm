@@ -25,6 +25,7 @@ describe("LockedPool contract", function () {
   let minter;
   let startBlock;
   let lockedPoolStartBlock;
+  let lockedPoolEndBlock;
 
   beforeEach(async function () {
     let SimpleBEP20 = await ethers.getContractFactory("SimpleBEP20");
@@ -72,7 +73,8 @@ describe("LockedPool contract", function () {
     );
     pendingWithdrawal = await PendingWithdrawal.deploy(pln.address, 86400 * 21);
 
-    lockedPoolStartBlock = startBlock + 20;
+    lockedPoolStartBlock = startBlock + 30;
+    lockedPoolEndBlock = lockedPoolStartBlock + 100;
     lockedPool = await LockedPool.deploy(
       pln.address, // staked token
       pln.address, // reward token
@@ -80,6 +82,7 @@ describe("LockedPool contract", function () {
       pendingWithdrawal.address,
       "20", // token per block
       lockedPoolStartBlock,
+      lockedPoolEndBlock,
       "4000" // limit
     );
 
@@ -128,24 +131,31 @@ describe("LockedPool contract", function () {
 
     it("should get only reward if deposit with amount = 0", async () => {
       await pln.mint(alice.address, "1000");
-      let currentBlock = await ethers.provider.getBlockNumber();
       await lockedPool.connect(alice).deposit("1000");
-      await mineNBlocksTo(currentBlock + 5);
+      await mineNBlocksTo(lockedPoolStartBlock + 5);
       await lockedPool.connect(alice).deposit("0");
 
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "100");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "120");
+    });
+
+    it("should get 1000 staked token and 10000 reward when deposit 1000 PLN and current block = end block", async () => {
+      await pln.mint(alice.address, "1000");
+      await lockedPool.connect(alice).deposit("1000");
+      await mineNBlocksTo(lockedPoolEndBlock + 200);
+      await lockedPool.connect(alice).deposit("0");
+
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "2000");
     });
   });
 
   describe("Withdraw", function () {
-    it("should get 100 PLN reward and 1000 PLN in pending treasury when withdraw 1000 in in 5 block period for 1000 staked", async () => {
+    it("should get 120 PLN reward and 1000 PLN in pending treasury when withdraw 1000 in in 5 block period for 1000 staked", async () => {
       await pln.mint(alice.address, "1000");
-      let currentBlock = await ethers.provider.getBlockNumber();
       await lockedPool.connect(alice).deposit("1000");
-      await mineNBlocksTo(currentBlock + 5);
+      await mineNBlocksTo(lockedPoolStartBlock + 5);
       await lockedPool.connect(alice).withdraw("1000");
 
-      assert.equal((await pln.balanceOf(alice.address)).toString(), "100");
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "120");
       const [,, locked,] = await pendingWithdrawal.lockedBalances(alice.address);
       assert.equal(locked.toString(), "1000");
     });

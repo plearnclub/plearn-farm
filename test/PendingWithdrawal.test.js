@@ -25,6 +25,7 @@ describe("PendingWithdrawal contract", function () {
   let minter;
   let startBlock;
   let lockedPoolStartBlock;
+  let lockedPoolEndBlock;
 
   beforeEach(async function () {
     let SimpleBEP20 = await ethers.getContractFactory("SimpleBEP20");
@@ -73,6 +74,7 @@ describe("PendingWithdrawal contract", function () {
     pendingWithdrawal = await PendingWithdrawal.deploy(pln.address, 86400 * 21);
 
     lockedPoolStartBlock = startBlock + 20;
+    lockedPoolEndBlock = lockedPoolStartBlock + 100;
     lockedPool = await LockedPool.deploy(
       pln.address, // staked token
       pln.address, // reward token
@@ -80,6 +82,7 @@ describe("PendingWithdrawal contract", function () {
       pendingWithdrawal.address,
       "20", // token per block
       lockedPoolStartBlock,
+      lockedPoolEndBlock,
       "4000" // limit
     );
 
