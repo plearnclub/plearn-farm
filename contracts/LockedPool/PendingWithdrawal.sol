@@ -17,7 +17,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
     /* ========== STATE VARIABLES ========== */
 
     struct Balances {
-        uint256 locked;
+        uint256 total;
     }
     struct LockedBalance {
         uint256 amount;
@@ -69,7 +69,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
                 unlockable = unlockable.add(locks[i].amount);
             }
         }
-        return (balances[user].locked, unlockable, locked, lockData);
+        return (balances[user].total, unlockable, locked, lockData);
     }
 
 
@@ -79,7 +79,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
     function lock(uint256 _amount, address _address) external nonReentrant {
         require(_amount > 0, "Cannot stake 0");
         Balances storage bal = balances[_address];
-        bal.locked = bal.locked.add(_amount);
+        bal.total = bal.total.add(_amount);
         uint256 unlockTime = block.timestamp.add(lockDuration);
         uint256 idx = userLocks[_address].length;
         if (idx == 0 || userLocks[_address][idx-1].unlockTime < unlockTime) {
@@ -98,7 +98,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
         uint256 amount;
         uint256 length = locks.length;
         if (locks[length-1].unlockTime <= block.timestamp) {
-            amount = bal.locked;
+            amount = bal.total;
             delete userLocks[msg.sender];
         } else {
             for (uint i = 0; i < length; i++) {
@@ -107,7 +107,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
                 delete locks[i];
             }
         }
-        bal.locked = bal.locked.sub(amount);
+        bal.total = bal.total.sub(amount);
         lockedToken.safeTransfer(msg.sender, amount);
     }
 
