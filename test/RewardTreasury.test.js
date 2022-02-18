@@ -30,7 +30,7 @@ describe("RewardTreasury contract", function () {
     let RewardTreasury = await ethers.getContractFactory("RewardTreasury");
 
     [minter, alice, bob, carol, dev, ref, safu] = await ethers.getSigners();
-    startBlock = await ethers.provider.getBlockNumber();
+    startBlock = await ethers.provider.getBlockNumber() + 30;
 
     this.plearnToken = await PlearnToken.new({ from: minter.address });
     pln = this.plearnToken;
@@ -84,13 +84,22 @@ describe("RewardTreasury contract", function () {
   describe("withdrawFromMasterChef", function () {
     it("should owner get 1 LPT and rewardTreasury get 100 PLN reward when withdraw 1 LPT in 5 block period", async function () {
         await lockedToken.approve(rewardTreasury.address, "1");
-        let currentBlock = await ethers.provider.getBlockNumber();
         await rewardTreasury.depositToMasterChef("1");
-        await mineNBlocksTo(currentBlock + 5);
+        await mineNBlocksTo(startBlock + 5);
         await rewardTreasury.withdrawFromMasterChef("1");
         assert.equal((await lockedToken.balanceOf(masterChef.address)).toString(), "0");
-        assert.equal((await pln.balanceOf(rewardTreasury.address)).toString(), "100");
+        assert.equal((await pln.balanceOf(rewardTreasury.address)).toString(), "120");
         assert.equal((await lockedToken.balanceOf(minter.address)).toString(), "1");
+    });
+  });
+
+  describe("harvestFromMasterChef", function () {
+    it("should rewardTreasury get 100 PLN reward when harvest in 5 block period", async function () {
+        await lockedToken.approve(rewardTreasury.address, "1");
+        await rewardTreasury.depositToMasterChef("1");
+        await mineNBlocksTo(startBlock + 5);
+        await rewardTreasury.harvestFromMasterChef();
+        assert.equal((await pln.balanceOf(rewardTreasury.address)).toString(), "120");
     });
   });
 

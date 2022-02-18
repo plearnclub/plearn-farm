@@ -41,11 +41,14 @@ contract RewardTreasury is Ownable {
 
     // Safe reward transfer function, just in case if rounding error causes pool to not have enough reward.
     function safeRewardTransfer(address _to, uint256 _amount) public onlyAdmin { 
-        IMasterChef(masterChef).deposit(masterChefPoolId, 0);
+        uint256 plearnBalance = plearn.balanceOf(address(this));
+        if (_amount > plearnBalance) {
+            IMasterChef(masterChef).deposit(masterChefPoolId, 0);
+        }
         plearn.transfer(_to, _amount);
     }
 
-    function depositToMasterChef(uint256 _amount) public onlyOwner {
+    function depositToMasterChef(uint256 _amount) external onlyOwner {
         IBEP20(lockedPoolToken).approve(address(masterChef), _amount);
         IBEP20(lockedPoolToken).safeTransferFrom(address(msg.sender), address(this), _amount);
         IMasterChef(masterChef).deposit(masterChefPoolId, _amount);
@@ -53,11 +56,15 @@ contract RewardTreasury is Ownable {
         emit DepositToMasterChef(msg.sender, masterChefPoolId, _amount);
     }
 
-    function withdrawFromMasterChef(uint256 _amount) public onlyOwner {
+    function withdrawFromMasterChef(uint256 _amount) external onlyOwner {
          IMasterChef(masterChef).withdraw(masterChefPoolId, _amount);
          IBEP20(lockedPoolToken).safeTransfer(address(msg.sender), _amount);
 
          emit WithdrawFromMasterChef(msg.sender, masterChefPoolId, _amount);
+    }
+
+    function harvestFromMasterChef() external onlyOwner {
+        IMasterChef(masterChef).deposit(masterChefPoolId, 0);
     }
 
     function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
