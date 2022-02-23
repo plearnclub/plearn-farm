@@ -238,7 +238,7 @@ contract LockedPool is Ownable, ReentrancyGuard {
      * @param _rewardPerBlock: the reward per block
      */
     function updateRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
-        require(block.number < startBlock, "Pool has started");
+        _updatePool();
         rewardPerBlock = _rewardPerBlock;
         emit NewRewardPerBlock(_rewardPerBlock);
     }
