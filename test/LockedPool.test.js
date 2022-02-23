@@ -5,7 +5,7 @@ const PlearnToken = artifacts.require("PlearnToken");
 const { BigNumber, utils } = ethers;
 const perBlock = "100";
 
-describe("LockedPool contract", function () {
+describe("PlearnLockedPool contract", function () {
   let pln;
   let earn;
   let lp1;
@@ -33,7 +33,7 @@ describe("LockedPool contract", function () {
     let MasterChef = await ethers.getContractFactory("MasterChef");
     let RewardTreasury = await ethers.getContractFactory("RewardTreasury");
     let PendingWithdrawal = await ethers.getContractFactory("PendingWithdrawal");
-    let LockedPool = await ethers.getContractFactory("LockedPool");
+    let PlearnLockedPool = await ethers.getContractFactory("PlearnLockedPool");
 
     [minter, alice, bob, carol, dev, ref, safu] = await ethers.getSigners();
     startBlock = await ethers.provider.getBlockNumber();
@@ -75,7 +75,7 @@ describe("LockedPool contract", function () {
 
     lockedPoolStartBlock = startBlock + 30;
     lockedPoolEndBlock = lockedPoolStartBlock + 100;
-    lockedPool = await LockedPool.deploy(
+    lockedPool = await PlearnLockedPool.deploy(
       pln.address, // staked token
       pln.address, // reward token
       rewardTreasury.address,
@@ -149,7 +149,7 @@ describe("LockedPool contract", function () {
   });
 
   describe("Withdraw", function () {
-    it("should get 120 PLN reward and 1000 PLN in pending withdrawal when withdraw 1000 in in 5 block period for 1000 staked", async () => {
+    it("should get 120 PLN reward and 1000 PLN in pending withdrawal when withdraw 1000 in 5 block period for 1000 staked", async () => {
       await pln.mint(alice.address, "1000");
       await lockedPool.connect(alice).deposit("1000");
       await mineNBlocksTo(lockedPoolStartBlock + 5);
@@ -161,8 +161,22 @@ describe("LockedPool contract", function () {
     });
   });
 
+  describe("updateRewardPerBlock", function () {
+    it("should get 170 PLN reward when Harvest in 10 block period for 1000 staked and reward per block update in currentBlock = 5", async () => {
+      await pln.mint(alice.address, "1000");
+      await lockedPool.connect(alice).deposit("1000");
+      await mineNBlocksTo(lockedPoolStartBlock + 5);
+      await lockedPool.connect(minter).updateRewardPerBlock("10");
+      const pendingReward = await lockedPool.connect(alice).pendingReward(alice.address);
+      await mineNBlocksTo(lockedPoolStartBlock + 10);
+      await lockedPool.connect(alice).deposit(0);
+
+      assert.equal((await pln.balanceOf(alice.address)).toString(), "170");
+    });
+  });
+
   describe("EmergencyWithdraw", function () {
-    it("should get 0 PLN reward and 1000 PLN in pending withdrawal when withdraw 1000 in in 5 block period for 1000 staked", async () => {
+    it("should get 0 PLN reward and 1000 PLN in pending withdrawal when withdraw 1000 in 5 block period for 1000 staked", async () => {
       await pln.mint(alice.address, "1000");
       await lockedPool.connect(alice).deposit("1000");
       await mineNBlocksTo(lockedPoolStartBlock + 5);

@@ -33,7 +33,7 @@ describe("PendingWithdrawal contract", function () {
     let MasterChef = await ethers.getContractFactory("MasterChef");
     let RewardTreasury = await ethers.getContractFactory("RewardTreasury");
     let PendingWithdrawal = await ethers.getContractFactory("PendingWithdrawal");
-    let LockedPool = await ethers.getContractFactory("LockedPool");
+    let PlearnLockedPool = await ethers.getContractFactory("PlearnLockedPool");
 
     [minter, alice, bob, carol, dev, ref, safu] = await ethers.getSigners();
     startBlock = await ethers.provider.getBlockNumber();
@@ -75,7 +75,7 @@ describe("PendingWithdrawal contract", function () {
 
     lockedPoolStartBlock = startBlock + 20;
     lockedPoolEndBlock = lockedPoolStartBlock + 100;
-    lockedPool = await LockedPool.deploy(
+    lockedPool = await PlearnLockedPool.deploy(
       pln.address, // staked token
       pln.address, // reward token
       rewardTreasury.address,

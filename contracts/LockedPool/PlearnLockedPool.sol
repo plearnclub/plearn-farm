@@ -15,7 +15,7 @@ interface IPendingWithdrawal {
     function lock(uint256 amount, address _address) external;
 }
 
-contract LockedPool is Ownable, ReentrancyGuard {
+contract PlearnLockedPool is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
