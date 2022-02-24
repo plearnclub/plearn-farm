@@ -63,7 +63,7 @@ contract RewardTreasury is Ownable {
          emit WithdrawFromMasterChef(msg.sender, masterChefPoolId, _amount);
     }
 
-    function harvestFromMasterChef() external onlyOwner {
+    function harvestFromMasterChef() external {
         IMasterChef(masterChef).deposit(masterChefPoolId, 0);
     }
 
