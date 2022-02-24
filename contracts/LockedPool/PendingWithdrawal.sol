@@ -109,7 +109,7 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
         }
         bal.total = bal.total.sub(amount);
         lockedToken.safeTransfer(msg.sender, amount);
-        emit Withdraw(msg.sender, amount);
+        emit Withdrawn(msg.sender, amount);
     }
 
     /* ========== RESTRICTED FUNCTIONS ========== */
@@ -124,6 +124,6 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
     /* ========== EVENTS ========== */
 
     event Locked(address indexed user, uint256 amount);
-    event Withdraw(address indexed user, uint256 amount);
+    event Withdrawn(address indexed user, uint256 amount);
     event Recovered(address token, uint256 amount);
 }
