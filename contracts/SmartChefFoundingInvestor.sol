@@ -65,9 +65,9 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
     }
 
     event AdminTokenRecovery(address tokenRecovered, uint256 amount);
-    event AdminTokenRecoveryWrongAddress(address indexed user, uint256 amount);
+    event EmergencyWithdraw(address indexed user, uint256 amount);
     event Harvest(address indexed user);
-    event DepositToInvestor(address indexed user, uint256 amount);
+    event Deposit(address indexed user, uint256 amount);
     event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
     event NewStartUnlockAndEndUnlockBlocks(uint256 startUnlockBlock, uint256 endUnlockBlock);
     event NewRewardPerBlock(uint256 rewardPerBlock);
@@ -174,7 +174,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
 
         user.rewardDebt = user.amount.mul(accTokenPerShare).div(PRECISION_FACTOR);
 
-        emit DepositToInvestor(msg.sender, _amount);
+        emit Deposit(_address, _amount);
     }
 
     /*
@@ -226,7 +226,7 @@ contract SmartChefFoundingInvestor is Ownable, ReentrancyGuard {
             stakedToken.safeTransfer(address(msg.sender), amountToTransfer);
             EnumerableSet.remove(_investors, _from);
         }
-        emit AdminTokenRecoveryWrongAddress(_from, user.amount);
+        emit EmergencyWithdraw(_from, amountToTransfer);
     }
 
     /**
