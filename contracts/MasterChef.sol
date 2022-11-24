@@ -130,6 +130,7 @@ contract MasterChef is OwnableUpgradeable {
         refAddr = _refAddr;
         safuAddr = _safuAddr;
         plearnPerBlock = _plearnPerBlock;
+        lastBlockDevWithdraw = _startBlock;
         startBlock = _startBlock;
         stakingPercent = _stakingPercent;
         devPercent = _devPercent;
