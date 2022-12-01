@@ -120,10 +120,16 @@ contract PendingWithdrawal is ReentrancyGuard, Ownable {
         emit Recovered(_tokenAddress, _tokenAmount);
     }
 
+    function updateLockDuration(uint256 _lockDuration) external onlyOwner {
+        lockDuration = _lockDuration;
+        emit NewLockDuration(_lockDuration);
+    }
+
 
     /* ========== EVENTS ========== */
 
     event Locked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event Recovered(address token, uint256 amount);
+    event NewLockDuration(uint256 lockDuration);
 }
