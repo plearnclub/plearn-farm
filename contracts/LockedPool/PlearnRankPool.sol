@@ -4,47 +4,242 @@ pragma solidity >=0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "../token/BEP20/IBEP20.sol";
+import "../token/BEP20/SafeBEP20.sol";
+import "./PlearnRewardTreasury.sol";
 
-contract PlearnLockedPool is Ownable, ReentrancyGuard {
+import "../PlearnToken.sol";
+import "../PlearnCoin.sol";
 
-    IBEP20 public tokenAddress; // Address of the token being locked
-    uint256[] public tiers;
-    uint256[] public tierUserLimits;
+contract PlearnRankPool is Ownable, ReentrancyGuard {
+    using SafeBEP20 for IBEP20;
+
+    bool public hasUserLimit;
+    uint256 public endBlock;
+    uint256 public startBlock;
+    uint256 public userLimitPerPool;
+    uint256 public PRECISION_FACTOR;
+    uint256 public BLOCKS_PER_YEAR;
+
+    IBEP20 public stakedToken;
+    IBEP20 public plnRewardToken;
+    PlearnCoin public plncRewardToken;
+    PlearnRewardTreasury public rewardTreasury;
+
+    uint256 public lockDuration;
+    uint256 public tierCount;
+    uint256 public userCount;
+    uint256 public maxAmountRewardCalculation;
+
     bool public isWithdrawUnlocked;
 
-    mapping(address => UserInfo) public userInfo;
+    struct Tier {
+        uint256 id;
+        string name;
+        uint256 minimumAmount;
+        uint256 maximumAmount;
+        uint256 plnRewardAPY;
+        uint256 plncRewardAPY;
+    }
 
     struct UserInfo {
-        uint256 amount; // How many staked tokens the user has provided
-        uint256 rewardDebt; // Reward debt
+        uint256 amount;
+        uint256 lockEndTime;
+        uint256 lastPLNRewardBlock;
+        uint256 lastPLNCRewardBlock;
     }
 
-    constructor(IBEP20 _tokenAddress) {
-        tokenAddress = _tokenAddress;
+    mapping(uint256 => Tier) public tiers;
+    mapping(address => UserInfo) public userInfo;
+
+    constructor(
+        IBEP20 _tokenAddress,
+        IBEP20 _plnRewardToken,
+        PlearnCoin _plncRewardToken,
+        PlearnRewardTreasury _rewardTreasury,
+        uint256 _lockDuration,
+        uint256 _startBlock,
+        uint256 _endBlock,
+        uint256 _userLimitPerPool
+    ) {
+        stakedToken = _tokenAddress;
+        plnRewardToken = _plnRewardToken;
+        plncRewardToken = _plncRewardToken;
+        rewardTreasury = _rewardTreasury;
+        startBlock = _startBlock;
+        endBlock = _endBlock;
+        lockDuration = _lockDuration;
+        BLOCKS_PER_YEAR = 10512000; // (60 / BSC_BLOCK_TIME) * 60 * 24 * 365
+
+        if (_userLimitPerPool > 0) {
+            hasUserLimit = true;
+            userLimitPerPool = _userLimitPerPool;
+        }
+
+        uint256 decimalsRewardToken = uint256(plnRewardToken.decimals());
+        require(decimalsRewardToken < 30, "Must be inferior to 30");
+        PRECISION_FACTOR = uint256(10 ** (30 - decimalsRewardToken));
+        tierCount = 0;
     }
 
-    // deposit
     function deposit(uint256 _amount) external nonReentrant {
+        UserInfo storage user = userInfo[msg.sender];
         require(_amount > 0, "Deposit amount must be greater than 0");
-        require(!isWithdrawUnlocked, "Withdraw is already unlocked, cannot deposit");
 
-        // Update user information
-        userInfo[msg.sender].amount += _amount;
+        if (hasUserLimit) {
+            require(userCount < userLimitPerPool, "User amount above limit");
+        }
 
-        // Transfer tokens to the contract
-        tokenAddress.transferFrom(msg.sender, address(this), _amount);
+        if (user.amount == 0) {
+            userCount++;
+        }
+
+        // Handle reward calculation and distribution
+        updateRewards(msg.sender);
+
+        user.amount += _amount;
+        user.lastPLNRewardBlock = block.number;
+        user.lastPLNCRewardBlock = block.number;
+        user.lockEndTime = block.timestamp + lockDuration;
+
+        stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
+        emit Deposit(msg.sender, _amount);
     }
 
-    // withdraw
     function withdraw(uint256 _amount) external nonReentrant {
+        UserInfo storage user = userInfo[msg.sender];
         require(_amount > 0, "Withdraw amount must be greater than 0");
-        require(isWithdrawUnlocked, "Withdraw is not yet unlocked");
+        require(user.amount >= _amount, "Amount to withdraw too high");
+        require(
+            user.lockEndTime <= block.timestamp || isWithdrawUnlocked,
+            "Cannot withdraw yet"
+        );
 
-        // Update user information
-        userInfo[msg.sender].amount -= _amount;
+        // Handle reward calculation and distribution
+        updateRewards(msg.sender);
 
-        // Transfer tokens back to the user
-        tokenAddress.transfer(msg.sender, _amount);
+        user.amount -= _amount;
+        if (user.amount == 0) {
+            userCount--;
+        }
+
+        stakedToken.safeTransfer(msg.sender, _amount);
+        emit Withdraw(msg.sender, _amount);
+    }
+
+    function harvest() external nonReentrant {
+        updateRewards(msg.sender);
+        emit Harvest(msg.sender);
+    }
+
+    function updateRewards(address _user) internal {
+        UserInfo storage user = userInfo[_user];
+        if (user.amount > 0) {
+            Tier memory userTier = getUserTier(user.amount);
+
+            // Calculate rewards
+            uint256 pendingPLN = calculatePLNReward(user, userTier);
+            uint256 pendingPLNC = calculatePLNCReward(user, userTier);
+
+            // Apply rewards
+            applyReward(_user, pendingPLN, pendingPLNC);
+        }
+    }
+
+    function calculatePLNReward(
+        UserInfo memory user,
+        Tier memory tier
+    ) internal view returns (uint256) {
+        uint256 interestPerBlock = calculateInterestPerBlock(
+            user.amount,
+            tier.plnRewardAPY
+        );
+        return
+            calculateReward(
+                user.lastPLNRewardBlock,
+                block.number,
+                interestPerBlock
+            );
+    }
+
+    function calculatePLNCReward(
+        UserInfo memory user,
+        Tier memory tier
+    ) internal view returns (uint256) {
+        uint256 interestPerBlock = calculateInterestPerBlock(
+            user.amount,
+            tier.plncRewardAPY
+        );
+        return
+            calculateReward(
+                user.lastPLNCRewardBlock,
+                block.number,
+                interestPerBlock
+            );
+    }
+
+    function applyReward(
+        address _user,
+        uint256 plnReward,
+        uint256 plncReward
+    ) internal {
+        if (plnReward > 0) {
+            safeRewardTransfer(_user, plnReward);
+        }
+        if (plncReward > 0) {
+            plncRewardToken.mint(_user, plncReward);
+        }
+    }
+
+    function calculateInterestPerBlock(
+        uint256 _amount,
+        uint256 _apy
+    ) internal view returns (uint256) {
+        if (_amount > maxAmountRewardCalculation) {
+            _amount = maxAmountRewardCalculation;
+        }
+
+        uint256 interestPerYear = (_amount * _apy) / 100;
+        return
+            (interestPerYear * PRECISION_FACTOR) /
+            BLOCKS_PER_YEAR /
+            PRECISION_FACTOR;
+    }
+
+    function calculateReward(
+        uint256 _lastRewardBlock,
+        uint256 _currentBlock,
+        uint256 _interestPerBlock
+    ) internal view returns (uint256) {
+        if (_lastRewardBlock < startBlock) {
+            _lastRewardBlock = startBlock;
+        }
+        if (_currentBlock > endBlock) {
+            _currentBlock = endBlock;
+        }
+        if (_lastRewardBlock > _currentBlock) {
+            return 0;
+        }
+        uint256 totalReward = (_currentBlock - _lastRewardBlock) *
+            _interestPerBlock;
+        return totalReward;
+    }
+
+    function pendingPLNReward(address _user) external view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        Tier memory userTier = getUserTier(user.amount);
+
+        // Calculate rewards
+        uint256 pendingPLN = calculatePLNReward(user, userTier);
+        return pendingPLN;
+    }
+
+    function pendingPLNCReward(address _user) external view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        Tier memory userTier = getUserTier(user.amount);
+
+        // Calculate rewards
+        uint256 pendingPLNC = calculatePLNCReward(user, userTier);
+        return pendingPLNC;
     }
 
     // set withdraw lock
@@ -52,15 +247,180 @@ contract PlearnLockedPool is Ownable, ReentrancyGuard {
         isWithdrawUnlocked = value;
     }
 
-    // owner functions
-    function setTiers(uint256[] calldata _tiers, uint256[] calldata _tierUserLimits) external onlyOwner {
-        require(_tiers.length == _tierUserLimits.length, "Length of tiers and user limits must be equal");
-        // Check if tiers are in order from min to max
-        for (uint256 i = 1; i < _tiers.length; i++) {
-            require(_tiers[i] > _tiers[i - 1], "Tiers must be in ascending order");
+    // add a new tier
+    function addTier(
+        string memory _name,
+        uint256 _minimumAmount,
+        uint256 _maximumAmount,
+        uint256 _plnRewardAPY,
+        uint256 _plncRewardAPY
+    ) public onlyOwner {
+        maxAmountRewardCalculation = max(
+            maxAmountRewardCalculation,
+            _maximumAmount
+        );
+
+        tiers[tierCount] = Tier({
+            id: tierCount,
+            name: _name,
+            minimumAmount: _minimumAmount,
+            maximumAmount: _maximumAmount,
+            plnRewardAPY: _plnRewardAPY,
+            plncRewardAPY: _plncRewardAPY
+        });
+        tierCount++;
+    }
+
+    // update an existing tier
+    function updateTier(
+        uint256 _id,
+        string memory _name,
+        uint256 _minimumAmount,
+        uint256 _maximumAmount,
+        uint256 _plnRewardAPY,
+        uint256 _plncRewardAPY
+    ) public onlyOwner {
+        require(tiers[_id].id == _id, "Tier does not exist");
+        maxAmountRewardCalculation = max(
+            maxAmountRewardCalculation,
+            _maximumAmount
+        );
+
+        tiers[_id] = Tier({
+            id: _id,
+            name: _name,
+            minimumAmount: _minimumAmount,
+            maximumAmount: _maximumAmount,
+            plnRewardAPY: _plnRewardAPY,
+            plncRewardAPY: _plncRewardAPY
+        });
+    }
+
+    function getUserTier(uint256 _amount) public view returns (Tier memory) {
+        if (_amount >= maxAmountRewardCalculation) {
+            for (uint256 i = 0; i < tierCount; i++) {
+                if (maxAmountRewardCalculation == tiers[i].maximumAmount) {
+                    return tiers[i];
+                }
+            }
         }
 
-        tiers = _tiers;
-        tierUserLimits = _tierUserLimits;
+        for (uint256 i = 0; i < tierCount; i++) {
+            if (
+                _amount >= tiers[i].minimumAmount &&
+                _amount < tiers[i].maximumAmount
+            ) {
+                return tiers[i];
+            }
+        }
+        return
+            Tier({
+                id: 0,
+                name: "",
+                minimumAmount: 0,
+                maximumAmount: 0,
+                plnRewardAPY: 0,
+                plncRewardAPY: 0
+            });
     }
+
+    /*
+     * @notice Reward transfer function.
+     * @param _to: user address
+     * @param _amount: amount to withdraw (in rewardToken)
+     */
+    function safeRewardTransfer(address _to, uint256 _amount) internal {
+        rewardTreasury.safeRewardTransfer(_to, _amount);
+    }
+
+    /**
+     * @notice It allows the owner to recover wrong tokens sent to the contract
+     * @param _tokenAddress: the address of the token to withdraw
+     * @param _tokenAmount: the number of tokens to withdraw
+     * @dev This function is only callable by owner.
+     */
+    function recoverWrongTokens(
+        address _tokenAddress,
+        uint256 _tokenAmount
+    ) external onlyOwner {
+        require(
+            _tokenAddress != address(stakedToken),
+            "Cannot be staked token"
+        );
+        require(
+            _tokenAddress != address(plnRewardToken),
+            "Cannot be reward token"
+        );
+        require(
+            _tokenAddress != address(plncRewardToken),
+            "Cannot be reward token"
+        );
+
+        IBEP20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
+
+        emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
+    }
+
+    /*
+     * @notice Stop rewards
+     * @dev Only callable by owner
+     */
+    function stopReward() external onlyOwner {
+        endBlock = block.number;
+        emit RewardsStop(block.number);
+    }
+
+    /**
+     * @notice It allows the owner to update start and end blocks
+     * @dev This function is only callable by owner.
+     * @param _startBlock: the new start block
+     * @param _endBlock: the new end block
+     */
+    function updateStartAndEndBlocks(
+        uint256 _startBlock,
+        uint256 _endBlock
+    ) external onlyOwner {
+        require(block.number < startBlock, "Pool has started");
+        require(
+            _startBlock < _endBlock,
+            "New startBlock must be lower than new endBlock"
+        );
+        require(
+            block.number < _startBlock,
+            "New startBlock must be higher than current block"
+        );
+
+        startBlock = _startBlock;
+        endBlock = _endBlock;
+
+        emit NewStartAndEndBlocks(_startBlock, _endBlock);
+    }
+
+    function updateEndBlocks(uint256 _endBlock) external onlyOwner {
+        require(
+            startBlock < _endBlock,
+            "New endBlock must be higher than startBlock"
+        );
+        require(
+            block.number < _endBlock,
+            "New endBlock must be higher than current block"
+        );
+
+        endBlock = _endBlock;
+
+        emit NewEndBlocks(_endBlock);
+    }
+
+    function max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a > b ? a : b;
+    }
+
+    /* ========== EVENTS ========== */
+    event Deposit(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
+    event Harvest(address indexed user);
+    event AdminTokenRecovery(address tokenRecovered, uint256 amount);
+    event RewardsStop(uint256 blockNumber);
+    event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
+    event NewEndBlocks(uint256 endBlock);
 }
