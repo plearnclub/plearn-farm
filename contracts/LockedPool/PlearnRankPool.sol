@@ -34,11 +34,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     struct Tier {
         uint256 id;
-        string name;
         uint256 minimumAmount;
         uint256 maximumAmount;
-        uint256 plnRewardAPY;
-        uint256 plncRewardAPY;
+        uint256 plnRewardPerBlockPerPLN;
+        uint256 plncRewardPerBlockPerPLN;
     }
 
     struct UserInfo {
@@ -140,8 +139,12 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
             uint256 pendingPLN = calculatePLNReward(user, userTier);
             uint256 pendingPLNC = calculatePLNCReward(user, userTier);
 
-            // Apply rewards
-            applyReward(_user, pendingPLN, pendingPLNC);
+            if (pendingPLN > 0) {
+                safeRewardTransfer(_user, pendingPLN);
+            }
+            if (pendingPLNC > 0) {
+                plncRewardToken.mint(_user, pendingPLNC);
+            }
         }
     }
 
@@ -149,15 +152,12 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         UserInfo memory user,
         Tier memory tier
     ) internal view returns (uint256) {
-        uint256 interestPerBlock = calculateInterestPerBlock(
-            user.amount,
-            tier.plnRewardAPY
-        );
         return
             calculateReward(
                 user.lastPLNRewardBlock,
                 block.number,
-                interestPerBlock
+                user.amount,
+                tier.plnRewardPerBlockPerPLN
             );
     }
 
@@ -165,50 +165,20 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         UserInfo memory user,
         Tier memory tier
     ) internal view returns (uint256) {
-        uint256 interestPerBlock = calculateInterestPerBlock(
-            user.amount,
-            tier.plncRewardAPY
-        );
         return
             calculateReward(
                 user.lastPLNCRewardBlock,
                 block.number,
-                interestPerBlock
+                user.amount,
+                tier.plncRewardPerBlockPerPLN
             );
-    }
-
-    function applyReward(
-        address _user,
-        uint256 plnReward,
-        uint256 plncReward
-    ) internal {
-        if (plnReward > 0) {
-            safeRewardTransfer(_user, plnReward);
-        }
-        if (plncReward > 0) {
-            plncRewardToken.mint(_user, plncReward);
-        }
-    }
-
-    function calculateInterestPerBlock(
-        uint256 _amount,
-        uint256 _apy
-    ) internal view returns (uint256) {
-        if (_amount > maxAmountRewardCalculation) {
-            _amount = maxAmountRewardCalculation;
-        }
-
-        uint256 interestPerYear = (_amount * _apy) / 100;
-        return
-            (interestPerYear * PRECISION_FACTOR) /
-            BLOCKS_PER_YEAR /
-            PRECISION_FACTOR;
     }
 
     function calculateReward(
         uint256 _lastRewardBlock,
         uint256 _currentBlock,
-        uint256 _interestPerBlock
+        uint256 _amount,
+        uint256 _rewardPerBlockPerPLN
     ) internal view returns (uint256) {
         if (_lastRewardBlock < startBlock) {
             _lastRewardBlock = startBlock;
@@ -220,7 +190,8 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
             return 0;
         }
         uint256 totalReward = (_currentBlock - _lastRewardBlock) *
-            _interestPerBlock;
+            _rewardPerBlockPerPLN *
+            _amount;
         return totalReward;
     }
 
@@ -249,11 +220,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     // add a new tier
     function addTier(
-        string memory _name,
         uint256 _minimumAmount,
         uint256 _maximumAmount,
-        uint256 _plnRewardAPY,
-        uint256 _plncRewardAPY
+        uint256 _plnRewardPerBlockPerPLN,
+        uint256 _plncRewardPerBlockPerPLN
     ) public onlyOwner {
         maxAmountRewardCalculation = max(
             maxAmountRewardCalculation,
@@ -262,11 +232,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
         tiers[tierCount] = Tier({
             id: tierCount,
-            name: _name,
             minimumAmount: _minimumAmount,
             maximumAmount: _maximumAmount,
-            plnRewardAPY: _plnRewardAPY,
-            plncRewardAPY: _plncRewardAPY
+            plnRewardPerBlockPerPLN: _plnRewardPerBlockPerPLN,
+            plncRewardPerBlockPerPLN: _plncRewardPerBlockPerPLN
         });
         tierCount++;
     }
@@ -274,11 +243,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
     // update an existing tier
     function updateTier(
         uint256 _id,
-        string memory _name,
         uint256 _minimumAmount,
         uint256 _maximumAmount,
-        uint256 _plnRewardAPY,
-        uint256 _plncRewardAPY
+        uint256 _plnRewardPerBlockPerPLN,
+        uint256 _plncRewardPerBlockPerPLN
     ) public onlyOwner {
         require(tiers[_id].id == _id, "Tier does not exist");
         maxAmountRewardCalculation = max(
@@ -288,11 +256,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
         tiers[_id] = Tier({
             id: _id,
-            name: _name,
             minimumAmount: _minimumAmount,
             maximumAmount: _maximumAmount,
-            plnRewardAPY: _plnRewardAPY,
-            plncRewardAPY: _plncRewardAPY
+            plnRewardPerBlockPerPLN: _plnRewardPerBlockPerPLN,
+            plncRewardPerBlockPerPLN: _plncRewardPerBlockPerPLN
         });
     }
 
@@ -316,11 +283,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         return
             Tier({
                 id: 0,
-                name: "",
                 minimumAmount: 0,
                 maximumAmount: 0,
-                plnRewardAPY: 0,
-                plncRewardAPY: 0
+                plnRewardPerBlockPerPLN: 0,
+                plncRewardPerBlockPerPLN: 0
             });
     }
 
