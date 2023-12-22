@@ -17,8 +17,6 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
     uint256 public endBlock;
     uint256 public startBlock;
     uint256 public userLimitPerPool;
-    uint256 public PRECISION_FACTOR;
-    uint256 public BLOCKS_PER_YEAR;
 
     IBEP20 public stakedToken;
     IBEP20 public plnRewardToken;
@@ -67,7 +65,6 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         startBlock = _startBlock;
         endBlock = _endBlock;
         lockDuration = _lockDuration;
-        BLOCKS_PER_YEAR = 10512000; // (60 / BSC_BLOCK_TIME) * 60 * 24 * 365
 
         if (_userLimitPerPool > 0) {
             hasUserLimit = true;
@@ -76,7 +73,6 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
         uint256 decimalsRewardToken = uint256(plnRewardToken.decimals());
         require(decimalsRewardToken < 30, "Must be inferior to 30");
-        PRECISION_FACTOR = uint256(10 ** (30 - decimalsRewardToken));
         tierCount = 0;
     }
 
