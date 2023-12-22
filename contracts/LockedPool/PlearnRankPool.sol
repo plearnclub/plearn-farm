@@ -7,28 +7,26 @@ import "../token/BEP20/IBEP20.sol";
 import "../token/BEP20/SafeBEP20.sol";
 import "./PlearnRewardTreasury.sol";
 
-import "../PlearnToken.sol";
-import "../PlearnCoin.sol";
+interface IBEP20Mintable is IBEP20 {
+    function mint(address to, uint256 amount) external returns (bool);
+}
 
 contract PlearnRankPool is Ownable, ReentrancyGuard {
     using SafeBEP20 for IBEP20;
 
-    bool public hasUserLimit;
     uint256 public endBlock;
     uint256 public startBlock;
     uint256 public userLimitPerPool;
 
     IBEP20 public stakedToken;
     IBEP20 public plnRewardToken;
-    PlearnCoin public plncRewardToken;
+    IBEP20Mintable public plncRewardToken;
     PlearnRewardTreasury public rewardTreasury;
 
     uint256 public lockDuration;
     uint256 public tierCount;
     uint256 public userCount;
     uint256 public maxAmountRewardCalculation;
-
-    bool public isWithdrawUnlocked;
 
     struct Tier {
         uint256 id;
@@ -40,18 +38,18 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     struct UserInfo {
         uint256 amount;
-        uint256 lockEndTime;
+        uint256 lastDepositTime;
         uint256 lastPLNRewardBlock;
         uint256 lastPLNCRewardBlock;
     }
 
-    mapping(uint256 => Tier) public tiers;
+    Tier[] public tiers;
     mapping(address => UserInfo) public userInfo;
 
     constructor(
         IBEP20 _tokenAddress,
         IBEP20 _plnRewardToken,
-        PlearnCoin _plncRewardToken,
+        IBEP20Mintable _plncRewardToken,
         PlearnRewardTreasury _rewardTreasury,
         uint256 _lockDuration,
         uint256 _startBlock,
@@ -67,22 +65,17 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         lockDuration = _lockDuration;
 
         if (_userLimitPerPool > 0) {
-            hasUserLimit = true;
             userLimitPerPool = _userLimitPerPool;
         }
 
-        uint256 decimalsRewardToken = uint256(plnRewardToken.decimals());
-        require(decimalsRewardToken < 30, "Must be inferior to 30");
         tierCount = 0;
     }
 
     function deposit(uint256 _amount) external nonReentrant {
-        UserInfo storage user = userInfo[msg.sender];
         require(_amount > 0, "Deposit amount must be greater than 0");
+        UserInfo storage user = userInfo[msg.sender];
 
-        if (hasUserLimit) {
-            require(userCount < userLimitPerPool, "User amount above limit");
-        }
+        require(userCount < userLimitPerPool, "User amount above limit");
 
         if (user.amount == 0) {
             userCount++;
@@ -94,7 +87,7 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         user.amount += _amount;
         user.lastPLNRewardBlock = block.number;
         user.lastPLNCRewardBlock = block.number;
-        user.lockEndTime = block.timestamp + lockDuration;
+        user.lastDepositTime = block.timestamp;
 
         stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
         emit Deposit(msg.sender, _amount);
@@ -105,7 +98,7 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         require(_amount > 0, "Withdraw amount must be greater than 0");
         require(user.amount >= _amount, "Amount to withdraw too high");
         require(
-            user.lockEndTime <= block.timestamp || isWithdrawUnlocked,
+            user.lastDepositTime + lockDuration < block.timestamp,
             "Cannot withdraw yet"
         );
 
@@ -209,12 +202,11 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         return pendingPLNC;
     }
 
-    // set withdraw lock
-    function setWithdrawUnlocked(bool value) external nonReentrant onlyOwner {
-        isWithdrawUnlocked = value;
+    // set lock duration
+    function setLockDuration(uint256 value) external nonReentrant onlyOwner {
+        lockDuration = value;
     }
 
-    // add a new tier
     function addTier(
         uint256 _minimumAmount,
         uint256 _maximumAmount,
@@ -226,17 +218,18 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
             _maximumAmount
         );
 
-        tiers[tierCount] = Tier({
-            id: tierCount,
-            minimumAmount: _minimumAmount,
-            maximumAmount: _maximumAmount,
-            plnRewardPerBlockPerPLN: _plnRewardPerBlockPerPLN,
-            plncRewardPerBlockPerPLN: _plncRewardPerBlockPerPLN
-        });
+        tiers.push(
+            Tier({
+                id: tierCount,
+                minimumAmount: _minimumAmount,
+                maximumAmount: _maximumAmount,
+                plnRewardPerBlockPerPLN: _plnRewardPerBlockPerPLN,
+                plncRewardPerBlockPerPLN: _plncRewardPerBlockPerPLN
+            })
+        );
         tierCount++;
     }
 
-    // update an existing tier
     function updateTier(
         uint256 _id,
         uint256 _minimumAmount,
@@ -244,7 +237,7 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         uint256 _plnRewardPerBlockPerPLN,
         uint256 _plncRewardPerBlockPerPLN
     ) public onlyOwner {
-        require(tiers[_id].id == _id, "Tier does not exist");
+        require(_id < tiers.length, "Tier does not exist");
         maxAmountRewardCalculation = max(
             maxAmountRewardCalculation,
             _maximumAmount
@@ -261,14 +254,14 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     function getUserTier(uint256 _amount) public view returns (Tier memory) {
         if (_amount >= maxAmountRewardCalculation) {
-            for (uint256 i = 0; i < tierCount; i++) {
+            for (uint256 i = 0; i < tiers.length; i++) {
                 if (maxAmountRewardCalculation == tiers[i].maximumAmount) {
                     return tiers[i];
                 }
             }
         }
 
-        for (uint256 i = 0; i < tierCount; i++) {
+        for (uint256 i = 0; i < tiers.length; i++) {
             if (
                 _amount >= tiers[i].minimumAmount &&
                 _amount < tiers[i].maximumAmount
@@ -297,30 +290,30 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     /**
      * @notice It allows the owner to recover wrong tokens sent to the contract
-     * @param _tokenAddress: the address of the token to withdraw
+     * @param _token: the address of the token to withdraw
      * @param _tokenAmount: the number of tokens to withdraw
      * @dev This function is only callable by owner.
      */
     function recoverWrongTokens(
-        address _tokenAddress,
+        IBEP20 _token,
         uint256 _tokenAmount
     ) external onlyOwner {
         require(
-            _tokenAddress != address(stakedToken),
+            address(_token) != address(stakedToken),
             "Cannot be staked token"
         );
         require(
-            _tokenAddress != address(plnRewardToken),
+            address(_token) != address(plnRewardToken),
             "Cannot be reward token"
         );
         require(
-            _tokenAddress != address(plncRewardToken),
+            address(_token) != address(plncRewardToken),
             "Cannot be reward token"
         );
 
-        IBEP20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
+        _token.safeTransfer(address(msg.sender), _tokenAmount);
 
-        emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
+        emit AdminTokenRecovery(address(_token), _tokenAmount);
     }
 
     /*
