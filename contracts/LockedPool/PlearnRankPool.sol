@@ -169,6 +169,9 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         uint256 _amount,
         uint256 _rewardPerBlockPerPLN
     ) internal view returns (uint256) {
+        if (_amount > maxAmountRewardCalculation) {
+            _amount = maxAmountRewardCalculation;
+        }
         if (_lastRewardBlock < startBlock) {
             _lastRewardBlock = startBlock;
         }
@@ -178,9 +181,8 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         if (_lastRewardBlock > _currentBlock) {
             return 0;
         }
-        uint256 totalReward = (_currentBlock - _lastRewardBlock) *
-            _rewardPerBlockPerPLN *
-            _amount;
+        uint256 totalReward = ((_currentBlock - _lastRewardBlock) *
+            (_rewardPerBlockPerPLN * _amount)) / 10 ** 18;
         return totalReward;
     }
 
