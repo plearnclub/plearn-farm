@@ -75,9 +75,8 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         require(_amount > 0, "Deposit amount must be greater than 0");
         UserInfo storage user = userInfo[msg.sender];
 
-        require(userCount < userLimitPerPool, "User amount above limit");
-
         if (user.amount == 0) {
+            require(userCount < userLimitPerPool, "User amount above limit");
             userCount++;
         }
 
@@ -122,7 +121,7 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
     function updateRewards(address _user) internal {
         UserInfo storage user = userInfo[_user];
         if (user.amount > 0) {
-            Tier memory userTier = getUserTier(user.amount);
+            Tier memory userTier = getUserTier(_user);
 
             // Calculate rewards
             uint256 pendingPLN = calculatePLNReward(user, userTier);
@@ -188,7 +187,7 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     function pendingPLNReward(address _user) external view returns (uint256) {
         UserInfo storage user = userInfo[_user];
-        Tier memory userTier = getUserTier(user.amount);
+        Tier memory userTier = getUserTier(_user);
 
         // Calculate rewards
         uint256 pendingPLN = calculatePLNReward(user, userTier);
@@ -197,7 +196,7 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
     function pendingPLNCReward(address _user) external view returns (uint256) {
         UserInfo storage user = userInfo[_user];
-        Tier memory userTier = getUserTier(user.amount);
+        Tier memory userTier = getUserTier(_user);
 
         // Calculate rewards
         uint256 pendingPLNC = calculatePLNCReward(user, userTier);
@@ -277,8 +276,9 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         });
     }
 
-    function getUserTier(uint256 _amount) public view returns (Tier memory) {
-        if (_amount >= maxAmountRewardCalculation) {
+    function getUserTier(address _user) public view returns (Tier memory) {
+        UserInfo storage user = userInfo[_user];
+        if (user.amount >= maxAmountRewardCalculation) {
             for (uint256 i = 0; i < tiers.length; i++) {
                 if (maxAmountRewardCalculation == tiers[i].maximumAmount) {
                     return tiers[i];
@@ -288,8 +288,8 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
 
         for (uint256 i = 0; i < tiers.length; i++) {
             if (
-                _amount >= tiers[i].minimumAmount &&
-                _amount < tiers[i].maximumAmount
+                user.amount >= tiers[i].minimumAmount &&
+                user.amount < tiers[i].maximumAmount
             ) {
                 return tiers[i];
             }
@@ -302,6 +302,14 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
                 plnRewardPerBlockPerPLN: 0,
                 plncRewardPerBlockPerPLN: 0
             });
+    }
+
+    function updateUserLimitPerPool(
+        uint256 _userLimitPerPool
+    ) external onlyOwner {
+        require(_userLimitPerPool > 0, "New limit must be greater than 0");
+        userLimitPerPool = _userLimitPerPool;
+        emit NewUserLimit(_userLimitPerPool);
     }
 
     /*
@@ -403,4 +411,5 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
     event RewardsStop(uint256 blockNumber);
     event NewStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
     event NewEndBlocks(uint256 endBlock);
+    event NewUserLimit(uint256 userLimitPerPool);
 }
