@@ -232,6 +232,29 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
         tierCount++;
     }
 
+    function addMultipleTiers(
+        uint256[] memory _minimumAmounts,
+        uint256[] memory _maximumAmounts,
+        uint256[] memory _plnRewardPerBlockPerPLNs,
+        uint256[] memory _plncRewardPerBlockPerPLNs
+    ) public onlyOwner {
+        require(
+            _minimumAmounts.length == _maximumAmounts.length &&
+                _minimumAmounts.length == _plnRewardPerBlockPerPLNs.length &&
+                _minimumAmounts.length == _plncRewardPerBlockPerPLNs.length,
+            "Arrays must have the same length"
+        );
+
+        for (uint256 i = 0; i < _minimumAmounts.length; i++) {
+            addTier(
+                _minimumAmounts[i],
+                _maximumAmounts[i],
+                _plnRewardPerBlockPerPLNs[i],
+                _plncRewardPerBlockPerPLNs[i]
+            );
+        }
+    }
+
     function updateTier(
         uint256 _id,
         uint256 _minimumAmount,
