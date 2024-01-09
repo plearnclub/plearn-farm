@@ -12,9 +12,10 @@ interface IPlearnMemberPool {
     }
 
     struct UserInfo {
-        uint128 userDeposit;
-        uint128 accrueInterest;
-        uint256 depositTime;
+        uint256 amount;
+        uint32 firstDayLocked;
+        uint32 lastDayAction;
+        uint256 tierIndex;
     }
 
     struct InfoFront {
@@ -23,26 +24,25 @@ interface IPlearnMemberPool {
         uint32 endLockTime;
     }
 
-    function deposit(uint256 _amount) external;
+    function deposit(uint256 _tierIndex, uint256 _amount) external;
 
     function withdraw(uint256 _amount) external;
 
     function harvest() external;
 
+    function extendLockPeriod() external;
+
     function poolLength() external view returns (uint256 length);
 
     function getUserInfo(
-        uint256 _poolIndex,
         address _user
     ) external view returns (InfoFront memory info);
 
-    function upgradeMembership(uint256 _poolIndex) external;
-
     // onlyOwner
 
-    function addTier(Tier calldata _pool) external;
+    function addTier(Tier calldata _tier) external;
 
-    function changeTier(uint256 _poolIndex, Tier calldata _pool) external;
+    function setTier(uint256 _tierIndex, Tier calldata _tier) external;
 
     function setEarnTreasury(address _newEarnTreasury) external;
 
