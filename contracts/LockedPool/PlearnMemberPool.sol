@@ -19,7 +19,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     IBEP20 public stakedToken;
     IBEP20 public plnRewardToken;
-    IBEP20Mintable public pcRewardToken;
+    IBEP20Mintable public pccRewardToken;
     PlearnRewardTreasury public rewardTreasury;
 
     uint128 public constant PERCENT_BASE = 1000_000_000;
@@ -53,14 +53,14 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     constructor(
         IBEP20 _tokenAddress,
         IBEP20 _plnRewardToken,
-        IBEP20Mintable _pcRewardToken,
+        IBEP20Mintable _pccRewardToken,
         PlearnRewardTreasury _rewardTreasury,
         uint32 _endDay,
         bool _depositEnabled
     ) {
         stakedToken = _tokenAddress;
         plnRewardToken = _plnRewardToken;
-        pcRewardToken = _pcRewardToken;
+        pccRewardToken = _pccRewardToken;
         rewardTreasury = _rewardTreasury;
         endDay = _endDay;
         depositEnabled = _depositEnabled;
@@ -154,7 +154,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
                 PERCENT_BASE;
         accruedInterest += lockInterest + unlockInterest;
 
-        uint32 lockEndDay = info.userInfo.lastDayAction + info.tier.lockPeriod;
+        uint32 lockEndDay = info.userInfo.firstDayLocked + info.tier.lockPeriod;
         info.endLockTime = info.userInfo.amount > 0
             ? lockEndDay < endDay
                 ? lockEndDay * 86400 + 43200
