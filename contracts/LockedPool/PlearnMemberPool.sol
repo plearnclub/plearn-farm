@@ -134,9 +134,8 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             uint256 accruedInterest
         )
     {
-        UserInfo storage _userInfo = userInfo[msg.sender];
-        Tier memory _userTier = tiers[_userInfo.tierIndex];
         info.userInfo = userInfo[_user];
+        Tier memory _userTier = tiers[info.userInfo.tierIndex];
         info.tier = _userTier;
         currentDay = getCurrentDay();
 
@@ -144,15 +143,15 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             info.userInfo.lastDayAction,
             info.tier.lockPeriod
         );
-        uint256 lockInterest = _userInfo.amount < _userTier.minAmount
+        uint256 lockInterest = info.userInfo.amount < _userTier.minAmount
             ? 0
-            : (_userInfo.amount * _userTier.lockDayPercent * lockDays) /
+            : (info.userInfo.amount * _userTier.lockDayPercent * lockDays) /
                 PERCENT_BASE;
-        uint256 unlockInterest = _userInfo.amount < _userTier.minAmount
+        uint256 unlockInterest = info.userInfo.amount < _userTier.minAmount
             ? 0
-            : (_userInfo.amount * _userTier.unlockDayPercent * unlockDays) /
+            : (info.userInfo.amount * _userTier.unlockDayPercent * unlockDays) /
                 PERCENT_BASE;
-        accruedInterest += lockInterest + unlockInterest;
+        accruedInterest = lockInterest + unlockInterest;
 
         uint32 lockEndDay = info.userInfo.firstDayLocked + info.tier.lockPeriod;
         info.endLockTime = info.userInfo.amount > 0
@@ -175,7 +174,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         require(depositEnabled && currentDay < endDay, "Deposit is disabled");
 
         require(
-            _userInfo.tierIndex >= _tierIndex,
+            _tierIndex >= _userInfo.tierIndex,
             "Cannot deposit to a lower tier"
         );
 
@@ -218,10 +217,9 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         }
 
         if (_userInfo.tierIndex != _tierIndex) {
-            _userInfo.tierIndex = _tierIndex;
-
             tiers[_userInfo.tierIndex].totalDeposited -= _userInfo.amount;
             tiers[_tierIndex].totalDeposited += _userInfo.amount + _amount;
+            _userInfo.tierIndex = _tierIndex;
         } else {
             tiers[_tierIndex].totalDeposited += _amount;
         }
