@@ -22,11 +22,11 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     IBEP20Mintable public pccRewardToken;
     PlearnRewardTreasury public rewardTreasury;
 
+    uint32 public unlockDayPercentBase;
     uint128 public constant PERCENT_BASE = 1000_000_000;
 
     struct Tier {
         uint32 lockDayPercent;
-        uint32 unlockDayPercent;
         uint32 lockPeriod;
         uint256 maxAmount;
         uint256 minAmount;
@@ -41,7 +41,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     }
 
     struct InfoFront {
-        Tier tier;
+        uint256 tierIndex;
         UserInfo userInfo;
         uint32 endLockTime;
     }
@@ -56,6 +56,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         IBEP20Mintable _pccRewardToken,
         PlearnRewardTreasury _rewardTreasury,
         uint32 _endDay,
+        uint32 _unlockDayPercentBase,
         bool _depositEnabled
     ) {
         stakedToken = _tokenAddress;
@@ -63,6 +64,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         pccRewardToken = _pccRewardToken;
         rewardTreasury = _rewardTreasury;
         endDay = _endDay;
+        unlockDayPercentBase = _unlockDayPercentBase;
         depositEnabled = _depositEnabled;
     }
 
@@ -82,6 +84,10 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         Tier calldata _tier
     ) external onlyOwner {
         require(_tierIndex < tiers.length, "Index out of bound");
+        require(
+            tiers[_tierIndex].totalDeposited == 0,
+            "Tier total deposited is not zero"
+        );
         require(_tier.maxAmount >= _tier.minAmount, "Incorrect amount limit");
         uint256 _totalDeposited = tiers[_tierIndex].totalDeposited;
         tiers[_tierIndex] = _tier;
@@ -135,13 +141,14 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         )
     {
         info.userInfo = userInfo[_user];
+        info.tierIndex = info.userInfo.tierIndex;
         Tier memory _userTier = tiers[info.userInfo.tierIndex];
-        info.tier = _userTier;
         currentDay = getCurrentDay();
 
         (uint32 lockDays, uint32 unlockDays) = getMultiplier(
+            info.userInfo.firstDayLocked,
             info.userInfo.lastDayAction,
-            info.tier.lockPeriod
+            _userTier.lockPeriod
         );
         uint256 lockInterest = info.userInfo.amount < _userTier.minAmount
             ? 0
@@ -149,11 +156,11 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
                 PERCENT_BASE;
         uint256 unlockInterest = info.userInfo.amount < _userTier.minAmount
             ? 0
-            : (info.userInfo.amount * _userTier.unlockDayPercent * unlockDays) /
+            : (info.userInfo.amount * unlockDayPercentBase * unlockDays) /
                 PERCENT_BASE;
         accruedInterest = lockInterest + unlockInterest;
 
-        uint32 lockEndDay = info.userInfo.firstDayLocked + info.tier.lockPeriod;
+        uint32 lockEndDay = info.userInfo.firstDayLocked + _userTier.lockPeriod;
         info.endLockTime = info.userInfo.amount > 0
             ? lockEndDay < endDay
                 ? lockEndDay * 86400 + 43200
@@ -198,6 +205,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         if (_userInfo.amount != 0) {
             Tier memory _userTier = tiers[_userInfo.tierIndex];
             (uint32 lockDays, uint32 unlockDays) = getMultiplier(
+                _userInfo.firstDayLocked,
                 _userInfo.lastDayAction,
                 _userTier.lockPeriod
             );
@@ -207,7 +215,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
                     PERCENT_BASE;
             uint256 unlockInterest = _userInfo.amount < _userTier.minAmount
                 ? 0
-                : (_userInfo.amount * _userTier.unlockDayPercent * unlockDays) /
+                : (_userInfo.amount * unlockDayPercentBase * unlockDays) /
                     PERCENT_BASE;
             uint256 totalInterest = lockInterest + unlockInterest;
 
@@ -245,6 +253,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         );
 
         (uint32 lockDays, uint32 unlockDays) = getMultiplier(
+            _userInfo.firstDayLocked,
             _userInfo.lastDayAction,
             _tier.lockPeriod
         );
@@ -255,7 +264,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
                 PERCENT_BASE;
         uint256 unlockInterest = _userInfo.amount < _tier.minAmount
             ? 0
-            : (_userInfo.amount * _tier.unlockDayPercent * unlockDays) /
+            : (_userInfo.amount * unlockDayPercentBase * unlockDays) /
                 PERCENT_BASE;
         uint256 totalInterest = lockInterest + unlockInterest;
 
@@ -293,6 +302,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint32 currentDay = getCurrentDay();
 
         (uint32 lockDays, uint32 unlockDays) = getMultiplier(
+            _userInfo.firstDayLocked,
             _userInfo.lastDayAction,
             _tier.lockPeriod
         );
@@ -302,7 +312,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
                 PERCENT_BASE;
         uint256 unlockInterest = _userInfo.amount < _tier.minAmount
             ? 0
-            : (_userInfo.amount * _tier.unlockDayPercent * unlockDays) /
+            : (_userInfo.amount * unlockDayPercentBase * unlockDays) /
                 PERCENT_BASE;
         uint256 totalInterest = lockInterest + unlockInterest;
 
@@ -313,17 +323,18 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     }
 
     function getMultiplier(
+        uint32 _firstDayLocked,
         uint32 _lastDayAction,
         uint32 _tierLockPeriod
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
         uint32 currentDay = getCurrentDay();
-        uint32 lockEndDay = _lastDayAction + _tierLockPeriod;
+        uint32 lockEndDay = _firstDayLocked + _tierLockPeriod;
 
         if (_lastDayAction == 0) return (0, 0);
 
         if ((currentDay >= _lastDayAction) && (currentDay <= endDay)) {
             if (lockEndDay < currentDay) {
-                lockDays = _tierLockPeriod;
+                lockDays = 0;
                 unlockDays = currentDay - lockEndDay;
             } else {
                 lockDays = currentDay - _lastDayAction;
@@ -335,7 +346,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             (endDay >= _lastDayAction)
         ) {
             if (lockEndDay < endDay) {
-                lockDays = _tierLockPeriod;
+                lockDays = 0;
                 unlockDays = endDay - lockEndDay;
             } else {
                 lockDays = endDay - _lastDayAction;
