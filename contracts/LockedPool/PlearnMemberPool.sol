@@ -248,7 +248,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         require(_amount > 0, "Withdraw amount must be greater than 0");
         require(_userInfo.amount >= _amount, "Amount to withdraw too high");
         require(
-            currentDay - _userInfo.firstDayLocked > _tier.lockPeriod,
+            currentDay - _userInfo.firstDayLocked >= _tier.lockPeriod,
             "Cannot withdraw yet"
         );
 
@@ -334,8 +334,13 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if ((currentDay >= _lastDayAction) && (currentDay <= endDay)) {
             if (lockEndDay < currentDay) {
-                lockDays = 0;
-                unlockDays = currentDay - lockEndDay;
+                if (lockEndDay < _lastDayAction) {
+                    lockDays = 0;
+                    unlockDays = currentDay - _lastDayAction;
+                } else {
+                    lockDays = lockEndDay - _lastDayAction;
+                    unlockDays = currentDay - lockEndDay;
+                }
             } else {
                 lockDays = currentDay - _lastDayAction;
                 unlockDays = 0;
@@ -346,8 +351,13 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             (endDay >= _lastDayAction)
         ) {
             if (lockEndDay < endDay) {
-                lockDays = 0;
-                unlockDays = endDay - lockEndDay;
+                if (lockEndDay < _lastDayAction) {
+                    lockDays = 0;
+                    unlockDays = endDay - _lastDayAction;
+                } else {
+                    lockDays = lockEndDay - _lastDayAction;
+                    unlockDays = endDay - lockEndDay;
+                }
             } else {
                 lockDays = endDay - _lastDayAction;
                 unlockDays = 0;
