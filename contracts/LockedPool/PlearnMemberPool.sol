@@ -212,7 +212,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         );
         require(currentDay + _tier.lockPeriod < endDay, "Too late");
 
-        if (currentDay - _userInfo.firstDayLocked > _tier.lockPeriod) {
+        if (currentDay - _userInfo.firstDayLocked >= _tier.lockPeriod) {
             _userInfo.firstDayLocked = currentDay;
         }
 
