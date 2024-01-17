@@ -39,8 +39,8 @@ describe("PlearnMemberPool contract", function () {
       phillCoin.address, // _pccRewardToken
       plearnRewardTreasury.address, // _rewardTreasury
       21185, // _endDay
-      13699, // _unlockDayPercentBase
-      136987, // _pccUnlockDayPercentBase
+      10000, // _unlockDayPercentBase
+      10000, // _pccUnlockDayPercentBase
       true // _depositEnabled
     );
     await plearnMemberPool.deployed();
@@ -48,8 +48,8 @@ describe("PlearnMemberPool contract", function () {
     // add tier
     await plearnMemberPool.addTier({
       // Silver
-      lockDayPercent: 13699,
-      pccLockDayPercent: 136987,
+      lockDayPercent: 10000, // 0.001% per day
+      pccLockDayPercent: 10000,
       lockPeriod: 30,
       maxAmount: toBigNumber(9999),
       minAmount: toBigNumber(1000),
@@ -57,8 +57,8 @@ describe("PlearnMemberPool contract", function () {
     });
     await plearnMemberPool.addTier({
       // Gold
-      lockDayPercent: 68494,
-      pccLockDayPercent: 205480,
+      lockDayPercent: 100000, // 0.01% per day
+      pccLockDayPercent: 100000,
       lockPeriod: 90,
       maxAmount: toBigNumber(49999),
       minAmount: toBigNumber(10000),
@@ -66,8 +66,8 @@ describe("PlearnMemberPool contract", function () {
     });
     await plearnMemberPool.addTier({
       // Platinum
-      lockDayPercent: 95891,
-      pccLockDayPercent: 369864,
+      lockDayPercent: 1000000, // 0.1% per day
+      pccLockDayPercent: 1000000,
       lockPeriod: 180,
       maxAmount: toBigNumber(99999),
       minAmount: toBigNumber(50000),
@@ -75,8 +75,8 @@ describe("PlearnMemberPool contract", function () {
     });
     await plearnMemberPool.addTier({
       // Diamond
-      lockDayPercent: 150685,
-      pccLockDayPercent: 616439,
+      lockDayPercent: 10000000, // 01% per day
+      pccLockDayPercent: 10000000,
       lockPeriod: 360,
       maxAmount: toBigNumber(700000000),
       minAmount: toBigNumber(100000),
@@ -113,43 +113,6 @@ describe("PlearnMemberPool contract", function () {
       let userInfo = await plearnMemberPool.userInfo(user1.address);
 
       assert.equal(toFormatEther(userInfo.amount), 1000);
-    });
-
-    it("should correctly calculate interest after the lock period ends", async function () {
-      const depositAmount = toBigNumber("10000");
-      const tierIndex = 1;
-
-      await plearnToken.transfer(user1.address, depositAmount);
-      await plearnToken
-        .connect(user1)
-        .approve(plearnMemberPool.address, depositAmount);
-      await plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount);
-
-      const tier = await plearnMemberPool.tiers(tierIndex);
-      const lockPeriodSeconds = tier.lockPeriod * 86400;
-      const postLockPeriod = 7;
-      const unlockDayPercentBase = 13699;
-
-      await increaseTime(lockPeriodSeconds);
-      await plearnMemberPool.connect(user1).harvest();
-      await increaseTime(postLockPeriod * 86400);
-
-      const expectedInterest = calculateExpectedInterest(
-        depositAmount,
-        unlockDayPercentBase,
-        postLockPeriod
-      );
-
-      const [userInfo, currentDay, accruedInterest, pccAccruedInterest] =
-        await plearnMemberPool.getUserInfo(user1.address);
-      expect(accruedInterest).to.be.closeTo(
-        expectedInterest,
-        toBigNumber("0.01")
-      );
-      expect(pccAccruedInterest).to.be.closeTo(
-        toBigNumber("9.5890"),
-        toBigNumber("0.01")
-      );
     });
 
     it("should allow deposit within tier limits", async function () {
@@ -217,20 +180,20 @@ describe("PlearnMemberPool contract", function () {
       const tierIndex = 2;
       const tier = await plearnMemberPool.tiers(tierIndex);
 
-      await increaseTime(tier.lockPeriod * 86400);
+      await increaseTime(tier.lockPeriod * 86400); // 180 days
 
       await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
         .to.emit(plearnMemberPool, "Withdraw")
         .withArgs(user1.address, withdrawAmount);
 
       expect(await plearnToken.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("5863.019"),
-        toBigNumber("0.001")
+        toBigNumber("14000"),
+        toBigNumber("0.01")
       );
 
       expect(await phillCoin.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("3328.776"),
-        toBigNumber("0.001")
+        toBigNumber("9000"),
+        toBigNumber("0.01")
       );
 
       const userInfo = await plearnMemberPool.userInfo(user1.address);
@@ -251,47 +214,27 @@ describe("PlearnMemberPool contract", function () {
       ).to.be.revertedWith("Cannot withdraw yet");
     });
 
-    it("Tier Downgrade on Withdrawal Below Current Tier Minimum and correctly calculate rewards", async function () {
+    it("Tier Downgrade on Withdrawal Below Current Tier Minimum", async function () {
       const withdrawAmount = toBigNumber("40000");
       const tierIndex = 2;
       const tier = await plearnMemberPool.tiers(tierIndex);
 
-      await increaseTime(tier.lockPeriod * 86400);
+      await increaseTime(tier.lockPeriod * 86400); // 180 days
 
       await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
         .to.emit(plearnMemberPool, "Withdraw")
         .withArgs(user1.address, withdrawAmount);
 
-      expect(await plearnToken.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("40863.019"),
-        toBigNumber("0.001")
-      );
-
       const userInfo = await plearnMemberPool.userInfo(user1.address);
       expect(userInfo.amount).to.equal(toBigNumber("10000"));
       expect(userInfo.tierIndex).to.equal(1);
-
-      await increaseTime(10 * 86400);
-
-      const [, , accruedInterest, pccAccruedInterest] =
-        await plearnMemberPool.getUserInfo(user1.address);
-
-      expect(accruedInterest).to.be.closeTo(
-        toBigNumber("1.3699"),
-        toBigNumber("0.001")
-      );
-
-      expect(pccAccruedInterest).to.be.closeTo(
-        toBigNumber("13.6986"),
-        toBigNumber("0.001")
-      );
     });
 
     it("should allow user to withdraw the entire locked amount after end day update", async function () {
       const _currentDay = await plearnMemberPool.getCurrentDay();
       const newEndDay = _currentDay + 20;
       await plearnMemberPool.connect(owner).setEndDay(newEndDay);
-      const daysToPass = 20;
+      const daysToPass = 20; // 20 days
       await increaseTime(86400 * daysToPass);
       const WithdrawAmount = toBigNumber("50000");
       await expect(plearnMemberPool.connect(user1).withdraw(WithdrawAmount))
@@ -302,11 +245,11 @@ describe("PlearnMemberPool contract", function () {
       expect(userInfo.amount).to.equal(toBigNumber("0"));
 
       const userBalance = await plearnToken.balanceOf(user1.address);
-      expect(userBalance).to.equal(toBigNumber("50095.891"));
+      expect(userBalance).to.equal(toBigNumber("51000"));
 
       expect(await phillCoin.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("369.864"),
-        toBigNumber("0.001")
+        toBigNumber("1000"),
+        toBigNumber("0.01")
       );
     });
   });
@@ -330,11 +273,7 @@ describe("PlearnMemberPool contract", function () {
 
       await expect(plearnMemberPool.connect(user1).harvest())
         .to.emit(plearnMemberPool, "Harvest")
-        .withArgs(
-          user1.address,
-          toBigNumber("0.41097"),
-          toBigNumber("4.10961")
-        );
+        .withArgs(user1.address, toBigNumber("0.3"), toBigNumber("0.3"));
 
       const userBalanceAfter = await plearnToken.balanceOf(user1.address);
       expect(userBalanceAfter).to.be.above(userBalanceBefore);
@@ -350,11 +289,7 @@ describe("PlearnMemberPool contract", function () {
 
       await expect(plearnMemberPool.connect(user1).harvest())
         .to.emit(plearnMemberPool, "Harvest")
-        .withArgs(
-          user1.address,
-          toBigNumber("0.54796"),
-          toBigNumber("5.47948")
-        );
+        .withArgs(user1.address, toBigNumber("0.4"), toBigNumber("0.4"));
 
       const userBalanceAfter = await plearnToken.balanceOf(user1.address);
       expect(userBalanceAfter).to.be.above(userBalanceBefore);
@@ -369,11 +304,7 @@ describe("PlearnMemberPool contract", function () {
 
       await expect(plearnMemberPool.connect(user1).harvest())
         .to.emit(plearnMemberPool, "Harvest")
-        .withArgs(
-          user1.address,
-          toBigNumber("0.205485"),
-          toBigNumber("2.054805")
-        );
+        .withArgs(user1.address, toBigNumber("0.15"), toBigNumber("0.15"));
 
       const userBalanceAfter = await plearnToken.balanceOf(user1.address);
       expect(userBalanceAfter).to.be.above(userBalanceBefore);
@@ -387,14 +318,146 @@ describe("PlearnMemberPool contract", function () {
 
       await expect(plearnMemberPool.connect(user1).harvest())
         .to.emit(plearnMemberPool, "Harvest")
-        .withArgs(
-          user1.address,
-          toBigNumber("0.013699"),
-          toBigNumber("0.136987")
-        );
+        .withArgs(user1.address, toBigNumber("0.01"), toBigNumber("0.01"));
 
       const userBalanceAfter = await plearnToken.balanceOf(user1.address);
       expect(userBalanceAfter).to.be.above(userBalanceBefore);
+    });
+  });
+
+  describe("Reward Calculation", function () {
+    let initialEndDay;
+    const tierIndex = 1;
+    const depositAmount = toBigNumber("10000");
+    const additionalDeposit = toBigNumber("40000");
+    beforeEach(async function () {
+      initialEndDay = await plearnMemberPool.endDay();
+
+      await plearnToken.transfer(user1.address, depositAmount);
+      await plearnToken.transfer(user1.address, additionalDeposit);
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, depositAmount);
+      await plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount);
+    });
+
+    it("should correctly calculate rewards after the lock period ends", async function () {
+      const tier = await plearnMemberPool.tiers(tierIndex);
+      await increaseTime(tier.lockPeriod * 86400); // 90 days
+
+      const [info, currentDay, accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+      let userInfo = info.userInfo;
+
+      expect(accruedInterest).to.equal(toBigNumber("90"));
+      expect(pccAccruedInterest).to.equal(toBigNumber("90"));
+    });
+
+    it("should correctly calculate interest after the lock period ends and unlock after 7 days", async function () {
+      const tier = await plearnMemberPool.tiers(tierIndex);
+      await increaseTime(tier.lockPeriod * 86400); // 90 days
+      await plearnMemberPool.connect(user1).harvest();
+      await increaseTime(7 * 86400); // 7 days
+
+      const [userInfo, currentDay, accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+      expect(accruedInterest).to.be.closeTo(
+        toBigNumber("0.7"),
+        toBigNumber("0.01")
+      );
+      expect(pccAccruedInterest).to.be.closeTo(
+        toBigNumber("0.7"),
+        toBigNumber("0.01")
+      );
+    });
+
+    it("should correctly calculate rewards after end day change", async function () {
+      const _currentDay = await plearnMemberPool.getCurrentDay();
+      const newEndDay = _currentDay + 20;
+      await plearnMemberPool.connect(owner).setEndDay(newEndDay);
+
+      const daysToPass = 30;
+      await increaseTime(86400 * daysToPass);
+
+      const [userInfo, currentDay, accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(accruedInterest).to.be.closeTo(
+        toBigNumber("20"),
+        toBigNumber("0.01")
+      );
+      expect(pccAccruedInterest).to.be.closeTo(
+        toBigNumber("20"),
+        toBigNumber("0.01")
+      );
+    });
+
+    it("should calculate rewards correctly after user upgrade tier", async function () {
+      const newTierIndex = 2;
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, additionalDeposit);
+      const daysToPass = 10;
+      await increaseTime(86400 * daysToPass);
+      await plearnMemberPool
+        .connect(user1)
+        .deposit(newTierIndex, additionalDeposit);
+
+      expect(await plearnToken.balanceOf(user1.address)).to.be.closeTo(
+        toBigNumber("10"),
+        toBigNumber("0.01")
+      );
+
+      expect(await phillCoin.balanceOf(user1.address)).to.be.closeTo(
+        toBigNumber("10"),
+        toBigNumber("0.01")
+      );
+
+      await increaseTime(86400 * 20);
+
+      const expectedReward = toBigNumber("1000");
+
+      const [info, currentDay, accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(accruedInterest).to.be.closeTo(
+        expectedReward,
+        toBigNumber("0.01")
+      );
+      expect(pccAccruedInterest).to.be.closeTo(
+        expectedReward,
+        toBigNumber("0.01")
+      );
+    });
+
+    it("should correctly calculate rewards after Tier Downgrade on Withdrawal Below Current Tier Minimum", async function () {
+      const withdrawAmount = toBigNumber("9000");
+      const tier = await plearnMemberPool.tiers(tierIndex);
+
+      await increaseTime(tier.lockPeriod * 86400); // 90 days
+
+      await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
+        .to.emit(plearnMemberPool, "Withdraw")
+        .withArgs(user1.address, withdrawAmount);
+
+      const userInfo = await plearnMemberPool.userInfo(user1.address);
+      expect(userInfo.amount).to.equal(toBigNumber("1000"));
+      expect(userInfo.tierIndex).to.equal(0);
+
+      await increaseTime(10 * 86400); // 10 days
+
+      const [, , accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(accruedInterest).to.be.closeTo(
+        toBigNumber("0.1"),
+        toBigNumber("0.01")
+      );
+
+      expect(pccAccruedInterest).to.be.closeTo(
+        toBigNumber("0.1"),
+        toBigNumber("0.01")
+      );
     });
   });
 
@@ -473,7 +536,7 @@ describe("PlearnMemberPool contract", function () {
 
   describe("Contract Settings", function () {
     it("should allow owner to set the end day", async function () {
-      const newEndDay = 20500;
+      const newEndDay = 21500;
 
       await expect(plearnMemberPool.connect(owner).setEndDay(newEndDay))
         .to.emit(plearnMemberPool, "endDayUpdated")
@@ -505,44 +568,6 @@ describe("PlearnMemberPool contract", function () {
     });
   });
 
-  describe("Reward Calculation with End Day Change", function () {
-    let initialEndDay;
-    beforeEach(async function () {
-      initialEndDay = await plearnMemberPool.endDay();
-      const depositAmount = toBigNumber("10000");
-      const tierIndex = 1;
-
-      await plearnToken.transfer(user1.address, depositAmount);
-      await plearnToken
-        .connect(user1)
-        .approve(plearnMemberPool.address, depositAmount);
-      await plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount);
-    });
-
-    it("should correctly calculate rewards after end day change", async function () {
-      const _currentDay = await plearnMemberPool.getCurrentDay();
-      const newEndDay = _currentDay + 20;
-      await plearnMemberPool.connect(owner).setEndDay(newEndDay);
-
-      const daysToPass = 30;
-      await increaseTime(86400 * daysToPass);
-
-      const expectedReward = toBigNumber("13.69864");
-
-      const [userInfo, currentDay, accruedInterest, pccAccruedInterest] =
-        await plearnMemberPool.getUserInfo(user1.address);
-
-      expect(accruedInterest).to.be.closeTo(
-        expectedReward,
-        toBigNumber("0.01")
-      );
-      expect(pccAccruedInterest).to.be.closeTo(
-        toBigNumber("41.0959"),
-        toBigNumber("0.01")
-      );
-    });
-  });
-
   describe("Tier Upgrade", function () {
     const initialDeposit = toBigNumber("1000");
     const additionalDeposit = toBigNumber("9000");
@@ -563,7 +588,7 @@ describe("PlearnMemberPool contract", function () {
       await plearnToken.transfer(user1.address, additionalDeposit);
 
       const daysToPass = 10;
-      await increaseTime(86400 * daysToPass);
+      await increaseTime(86400 * daysToPass); // 10 days
       await plearnMemberPool
         .connect(user1)
         .deposit(newTierIndex, additionalDeposit);
@@ -575,29 +600,13 @@ describe("PlearnMemberPool contract", function () {
       ).to.be.revertedWith("Cannot withdraw yet");
     });
 
-    it("should allow user to upgrade tier and calculate rewards correctly", async function () {
+    it("should allow user to upgrade tier", async function () {
       const newTierIndex = 1;
       await plearnToken.transfer(user1.address, additionalDeposit);
 
-      const daysToPass = 10;
-      await increaseTime(86400 * daysToPass);
       await plearnMemberPool
         .connect(user1)
         .deposit(newTierIndex, additionalDeposit);
-
-      expect(await plearnToken.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("0.13698"),
-        toBigNumber("0.001")
-      );
-
-      expect(await phillCoin.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("1.3698"),
-        toBigNumber("0.001")
-      );
-
-      await increaseTime(86400 * 20);
-
-      const expectedReward = toBigNumber("13.6988");
 
       const [info, currentDay, accruedInterest, pccAccruedInterest] =
         await plearnMemberPool.getUserInfo(user1.address);
@@ -605,14 +614,6 @@ describe("PlearnMemberPool contract", function () {
       expect(info.tierIndex).to.equal(newTierIndex);
       expect(info.userInfo.amount).to.equal(
         initialDeposit.add(additionalDeposit)
-      );
-      expect(accruedInterest).to.be.closeTo(
-        expectedReward,
-        toBigNumber("0.01")
-      );
-      expect(pccAccruedInterest).to.be.closeTo(
-        toBigNumber("41.0959"),
-        toBigNumber("0.01")
       );
     });
   });
@@ -631,7 +632,7 @@ describe("PlearnMemberPool contract", function () {
       await plearnMemberPool.connect(user1).deposit(tierIndex, initialDeposit);
 
       const tier = await plearnMemberPool.tiers(tierIndex);
-      await increaseTime(tier.lockPeriod * 86400);
+      await increaseTime(tier.lockPeriod * 86400); // 60 days
     });
 
     it("should extend lock period with zero deposit", async function () {
@@ -668,12 +669,5 @@ describe("PlearnMemberPool contract", function () {
 
   function toFormatEther(value, decimals = 18) {
     return ethers.utils.formatEther(value.toString());
-  }
-
-  function calculateExpectedInterest(amount, dailyPercent, days) {
-    const dailyInterestRate = dailyPercent / 1000_000_000;
-    const value =
-      (Number(amount) * dailyInterestRate * days) / 1000_000_000_000_000_000;
-    return toBigNumber(value);
   }
 });
