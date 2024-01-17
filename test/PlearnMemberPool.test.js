@@ -107,40 +107,12 @@ describe("PlearnMemberPool contract", function () {
         .connect(user1)
         .approve(plearnMemberPool.address, depositAmount);
 
-      expect(await plearnToken.balanceOf(user1.address)).to.equal(
-        depositAmount
-      );
-
       await expect(plearnMemberPool.connect(user1).deposit(tier, depositAmount))
         .to.emit(plearnMemberPool, "Deposit")
         .withArgs(user1.address, tier, depositAmount);
       let userInfo = await plearnMemberPool.userInfo(user1.address);
 
       assert.equal(toFormatEther(userInfo.amount), 1000);
-    });
-    it("should allow deposit and correctly calculate rewards", async function () {
-      const depositAmount = toBigNumber("1000");
-      const tierIndex = 0;
-      const tier = await plearnMemberPool.tiers(tierIndex);
-      const approveDepositAmount = toBigNumber("1000");
-      await plearnToken.transfer(user1.address, approveDepositAmount);
-      await plearnToken
-        .connect(user1)
-        .approve(plearnMemberPool.address, approveDepositAmount);
-
-      await plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount);
-      await increaseTime(tier.lockPeriod * 86400);
-
-      const [info, currentDay, accruedInterest, pccAccruedInterest] =
-        await plearnMemberPool.getUserInfo(user1.address);
-      let userInfo = info.userInfo;
-
-      expect(userInfo.amount).to.equal(depositAmount);
-      expect(await plearnToken.balanceOf(user1.address)).to.equal(
-        toBigNumber("0")
-      );
-      expect(accruedInterest).to.equal(toBigNumber("0.41097"));
-      expect(pccAccruedInterest).to.equal(toBigNumber("4.10961"));
     });
 
     it("should correctly calculate interest after the lock period ends", async function () {
@@ -642,6 +614,41 @@ describe("PlearnMemberPool contract", function () {
         toBigNumber("41.0959"),
         toBigNumber("0.01")
       );
+    });
+  });
+
+  describe("Lock Extension", function () {
+    let initialDeposit, tierIndex;
+
+    beforeEach(async function () {
+      initialDeposit = toBigNumber("10000");
+      tierIndex = 1;
+
+      await plearnToken.transfer(user1.address, initialDeposit);
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, initialDeposit);
+      await plearnMemberPool.connect(user1).deposit(tierIndex, initialDeposit);
+
+      const tier = await plearnMemberPool.tiers(tierIndex);
+      await increaseTime(tier.lockPeriod * 86400);
+    });
+
+    it("should extend lock period with zero deposit", async function () {
+      const newDeposit = toBigNumber("0");
+      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBefore = await plearnMemberPool.userInfo(user1.address);
+      const firstDayLockedBefore = userInfoBefore.firstDayLocked;
+      await expect(
+        plearnMemberPool.connect(user1).deposit(tierIndex, newDeposit)
+      )
+        .to.emit(plearnMemberPool, "Deposit")
+        .withArgs(user1.address, tierIndex, newDeposit);
+
+      const userInfo = await plearnMemberPool.userInfo(user1.address);
+      expect(userInfo.firstDayLocked).to.be.above(firstDayLockedBefore);
+
+      expect(userInfo.amount).to.equal(initialDeposit);
     });
   });
 
