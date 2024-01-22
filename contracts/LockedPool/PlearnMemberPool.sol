@@ -44,12 +44,6 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         Tier tier;
     }
 
-    struct InfoFront {
-        uint256 tierIndex;
-        UserInfo userInfo;
-        uint32 endLockTime;
-    }
-
     Tier[] public tiers;
 
     mapping(address => UserInfo) public userInfo;
@@ -138,31 +132,33 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         public
         view
         returns (
-            InfoFront memory info,
+            UserInfo memory info,
             uint32 currentDay,
             uint256 accruedInterest,
-            uint256 pccAccruedInterest
+            uint256 pccAccruedInterest,
+            uint32 endLockTime
         )
     {
-        info.userInfo = userInfo[_user];
-        info.tierIndex = info.userInfo.tierIndex;
-        Tier memory _userTier = info.userInfo.tier;
+        UserInfo memory _userInfo = userInfo[_user];
+        Tier memory _userTier = _userInfo.tier;
         uint32 _currentDay = getCurrentDay();
+
+        info = _userInfo;
         currentDay = _currentDay;
 
         (
             uint256 totalInterest,
             uint256 pccTotalInterest
-        ) = calculateTotalInterest(info.userInfo);
+        ) = calculateTotalInterest(_userInfo);
         accruedInterest = totalInterest;
         pccAccruedInterest = pccTotalInterest;
 
-        uint32 lockEndDay = info.userInfo.firstDayLocked + _userTier.lockPeriod;
-        info.endLockTime = info.userInfo.amount > 0
+        uint32 lockEndDay = _userInfo.firstDayLocked + _userTier.lockPeriod;
+        endLockTime = _userInfo.amount > 0
             ? lockEndDay < endDay
                 ? lockEndDay * 86400 + 43200
                 : endDay * 86400 + 43200
-            : info.userInfo.lastDayAction * 86400 + 43200;
+            : _userInfo.lastDayAction * 86400 + 43200;
     }
 
     function deposit(
