@@ -459,6 +459,89 @@ describe("PlearnMemberPool contract", function () {
         toBigNumber("0.01")
       );
     });
+
+    it("should correctly calculate rewards after tier is set", async function () {
+      const updatedTier = {
+        lockDayPercent: 1000000,
+        pccLockDayPercent: 0,
+        lockPeriod: 30,
+        maxAmount: toBigNumber(20000),
+        minAmount: toBigNumber(5000),
+        totalDeposited: 0,
+      };
+      await increaseTime(10 * 86400); // 10 days 10 PLN, 10 PCC
+      await plearnMemberPool.setTier(tierIndex, updatedTier);
+      const tier = await plearnMemberPool.tiers(tierIndex);
+      await increaseTime(81 * 86400); // 20 days
+      const [, , accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(accruedInterest).to.be.closeTo(
+        toBigNumber("90.1"),
+        toBigNumber("0")
+      );
+
+      expect(pccAccruedInterest).to.be.closeTo(
+        toBigNumber("90.1"),
+        toBigNumber("0")
+      );
+    });
+
+    it("should correctly calculate rewards after tier set and additional deposit", async function () {
+      const updatedTier = {
+        lockDayPercent: 1000000,
+        pccLockDayPercent: 1000000,
+        lockPeriod: 60,
+        maxAmount: toBigNumber(50000),
+        minAmount: toBigNumber(5000),
+        totalDeposited: 0,
+      };
+
+      await plearnMemberPool.setTier(tierIndex, updatedTier);
+
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, additionalDeposit);
+      await plearnMemberPool
+        .connect(user1)
+        .deposit(tierIndex, additionalDeposit);
+
+      await increaseTime(30 * 86400); // 30 days
+
+      const [, , accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(accruedInterest).to.equal(toBigNumber("1500"));
+      expect(pccAccruedInterest).to.equal(toBigNumber("1500"));
+    });
+
+    it("should correctly calculate rewards after tier set and additional deposit", async function () {
+      const updatedTier = {
+        lockDayPercent: 1000000,
+        pccLockDayPercent: 1000000,
+        lockPeriod: 60,
+        maxAmount: toBigNumber(50000),
+        minAmount: toBigNumber(5000),
+        totalDeposited: 0,
+      };
+
+      await plearnMemberPool.setTier(tierIndex, updatedTier);
+
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, additionalDeposit);
+      await plearnMemberPool
+        .connect(user1)
+        .deposit(tierIndex, additionalDeposit);
+
+      await increaseTime(30 * 86400); // 30 days
+
+      const [, , accruedInterest, pccAccruedInterest] =
+        await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(accruedInterest).to.equal(toBigNumber("1500"));
+      expect(pccAccruedInterest).to.equal(toBigNumber("1500"));
+    });
   });
 
   describe("Tier Management", function () {
@@ -511,26 +594,43 @@ describe("PlearnMemberPool contract", function () {
       expect(setTier.minAmount).to.equal(updatedTier.minAmount);
     });
 
-    it("should not allow owner to set an existing tier if totalDeposited is greater than 0", async function () {
-      const initialDeposit = toBigNumber("1000");
+    it("should correctly update tier when tier is set", async function () {
       const tierIndex = 0;
-      await plearnToken.transfer(user1.address, initialDeposit);
+      const depositAmount = toBigNumber("1000");
+      await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
         .connect(user1)
-        .approve(plearnMemberPool.address, initialDeposit);
-      await plearnMemberPool.connect(user1).deposit(tierIndex, initialDeposit);
+        .approve(plearnMemberPool.address, depositAmount);
+      await plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount);
       const updatedTier = {
-        lockDayPercent: 15000,
+        lockDayPercent: 100000,
         pccLockDayPercent: 0,
         lockPeriod: 30,
         maxAmount: toBigNumber(20000),
         minAmount: toBigNumber(5000),
         totalDeposited: 0,
       };
+      const currentTier = await plearnMemberPool.tiers(tierIndex);
+      await plearnMemberPool.setTier(tierIndex, updatedTier);
+      const userInfo = await plearnMemberPool.userInfo(user1.address);
+      const userTier = await userInfo.tier;
+      await plearnMemberPool.setTier(tierIndex, updatedTier);
+      const tier = await plearnMemberPool.tiers(tierIndex);
 
-      await expect(
-        plearnMemberPool.connect(owner).setTier(tierIndex, updatedTier)
-      ).to.be.revertedWith("Tier total deposited is not zero");
+      expect(tier.lockDayPercent).to.equal(updatedTier.lockDayPercent);
+      expect(tier.pccLockDayPercent).to.equal(updatedTier.pccLockDayPercent);
+      expect(tier.lockPeriod).to.equal(updatedTier.lockPeriod);
+      expect(tier.maxAmount).to.equal(updatedTier.maxAmount);
+      expect(tier.minAmount).to.equal(updatedTier.minAmount);
+
+      // User tier
+      expect(currentTier.lockDayPercent).to.equal(userTier.lockDayPercent);
+      expect(currentTier.pccLockDayPercent).to.equal(
+        userTier.pccLockDayPercent
+      );
+      expect(currentTier.lockPeriod).to.equal(userTier.lockPeriod);
+      expect(currentTier.maxAmount).to.equal(userTier.maxAmount);
+      expect(currentTier.minAmount).to.equal(userTier.minAmount);
     });
   });
 
@@ -632,7 +732,7 @@ describe("PlearnMemberPool contract", function () {
       await plearnMemberPool.connect(user1).deposit(tierIndex, initialDeposit);
 
       const tier = await plearnMemberPool.tiers(tierIndex);
-      await increaseTime(tier.lockPeriod * 86400); // 60 days
+      await increaseTime(tier.lockPeriod * 86400); // 90 days
     });
 
     it("should extend lock period with zero deposit", async function () {
