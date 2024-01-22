@@ -345,9 +345,8 @@ describe("PlearnMemberPool contract", function () {
       const tier = await plearnMemberPool.tiers(tierIndex);
       await increaseTime(tier.lockPeriod * 86400); // 90 days
 
-      const [info, currentDay, accruedInterest, pccAccruedInterest] =
+      const [, , accruedInterest, pccAccruedInterest] =
         await plearnMemberPool.getUserInfo(user1.address);
-      let userInfo = info.userInfo;
 
       expect(accruedInterest).to.equal(toBigNumber("90"));
       expect(pccAccruedInterest).to.equal(toBigNumber("90"));
@@ -379,7 +378,7 @@ describe("PlearnMemberPool contract", function () {
       const daysToPass = 30;
       await increaseTime(86400 * daysToPass);
 
-      const [userInfo, currentDay, accruedInterest, pccAccruedInterest] =
+      const [, , accruedInterest, pccAccruedInterest] =
         await plearnMemberPool.getUserInfo(user1.address);
 
       expect(accruedInterest).to.be.closeTo(
@@ -417,7 +416,7 @@ describe("PlearnMemberPool contract", function () {
 
       const expectedReward = toBigNumber("1000");
 
-      const [info, currentDay, accruedInterest, pccAccruedInterest] =
+      const [, , accruedInterest, pccAccruedInterest] =
         await plearnMemberPool.getUserInfo(user1.address);
 
       expect(accruedInterest).to.be.closeTo(
@@ -708,13 +707,10 @@ describe("PlearnMemberPool contract", function () {
         .connect(user1)
         .deposit(newTierIndex, additionalDeposit);
 
-      const [info, currentDay, accruedInterest, pccAccruedInterest] =
-        await plearnMemberPool.getUserInfo(user1.address);
+      const [info, , ,] = await plearnMemberPool.getUserInfo(user1.address);
 
       expect(info.tierIndex).to.equal(newTierIndex);
-      expect(info.userInfo.amount).to.equal(
-        initialDeposit.add(additionalDeposit)
-      );
+      expect(info.amount).to.equal(initialDeposit.add(additionalDeposit));
     });
   });
 
