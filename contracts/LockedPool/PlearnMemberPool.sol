@@ -28,7 +28,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     uint128 public constant PERCENT_BASE = 1000_000_000;
 
     struct Tier {
-        uint32 lockDayPercent;
+        uint32 lockDayPercent; // E.g., 0.005% is stored as (0.005 / 100) * 1e9 = 50,000
         uint32 pccLockDayPercent;
         uint32 lockPeriod;
         uint256 maxAmount;
@@ -41,6 +41,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint32 firstDayLocked;
         uint32 lastDayAction;
         uint256 tierIndex;
+        Tier tier;
     }
 
     struct InfoFront {
@@ -90,10 +91,6 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         Tier calldata _tier
     ) external onlyOwner {
         require(_tierIndex < tiers.length, "Index out of bound");
-        require(
-            tiers[_tierIndex].totalDeposited == 0,
-            "Tier total deposited is not zero"
-        );
         require(_tier.maxAmount >= _tier.minAmount, "Incorrect amount limit");
         uint256 _totalDeposited = tiers[_tierIndex].totalDeposited;
         tiers[_tierIndex] = _tier;
@@ -149,32 +146,16 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     {
         info.userInfo = userInfo[_user];
         info.tierIndex = info.userInfo.tierIndex;
-        Tier memory _userTier = tiers[info.userInfo.tierIndex];
-        currentDay = getCurrentDay();
+        Tier memory _userTier = info.userInfo.tier;
+        uint32 _currentDay = getCurrentDay();
+        currentDay = _currentDay;
 
-        (uint32 lockDays, uint32 unlockDays) = getMultiplier(
-            info.userInfo.firstDayLocked,
-            info.userInfo.lastDayAction,
-            _userTier.lockPeriod
-        );
-
-        accruedInterest = calculateAccruedInterest(
-            info.userInfo.amount,
-            _userTier.minAmount,
-            _userTier.lockDayPercent,
-            unlockDayPercentBase,
-            lockDays,
-            unlockDays
-        );
-
-        pccAccruedInterest = calculateAccruedInterest(
-            info.userInfo.amount,
-            _userTier.minAmount,
-            _userTier.pccLockDayPercent,
-            pccUnlockDayPercentBase,
-            lockDays,
-            unlockDays
-        );
+        (
+            uint256 totalInterest,
+            uint256 pccTotalInterest
+        ) = calculateTotalInterest(info.userInfo);
+        accruedInterest = totalInterest;
+        pccAccruedInterest = pccTotalInterest;
 
         uint32 lockEndDay = info.userInfo.firstDayLocked + _userTier.lockPeriod;
         info.endLockTime = info.userInfo.amount > 0
@@ -216,42 +197,20 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             _userInfo.firstDayLocked = currentDay;
         }
 
-        stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
-
         if (_userInfo.amount != 0) {
-            Tier memory _userTier = tiers[_userInfo.tierIndex];
-            (uint32 lockDays, uint32 unlockDays) = getMultiplier(
-                _userInfo.firstDayLocked,
-                _userInfo.lastDayAction,
-                _userTier.lockPeriod
-            );
-
-            uint256 totalInterest = calculateAccruedInterest(
-                _userInfo.amount,
-                _userTier.minAmount,
-                _userTier.lockDayPercent,
-                unlockDayPercentBase,
-                lockDays,
-                unlockDays
-            );
-
+            (
+                uint256 totalInterest,
+                uint256 pccTotalInterest
+            ) = calculateTotalInterest(_userInfo);
             if (totalInterest > 0) {
                 safeRewardTransfer(msg.sender, totalInterest); // require totalInterest >= reward treasury balance
             }
-
-            uint256 pccTotalInterest = calculateAccruedInterest(
-                _userInfo.amount,
-                _userTier.minAmount,
-                _userTier.pccLockDayPercent,
-                pccUnlockDayPercentBase,
-                lockDays,
-                unlockDays
-            );
-
             if (pccTotalInterest > 0) {
                 pccRewardToken.mint(msg.sender, pccTotalInterest);
             }
         }
+
+        stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         if (_userInfo.tierIndex != _tierIndex) {
             tiers[_userInfo.tierIndex].totalDeposited -= _userInfo.amount;
@@ -263,6 +222,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         _userInfo.lastDayAction = currentDay;
         _userInfo.amount += _amount;
+        _userInfo.tier = _tier;
 
         emit Deposit(msg.sender, _tierIndex, _amount);
     }
@@ -270,7 +230,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     function withdraw(uint256 _amount) public nonReentrant notContract {
         UserInfo storage _userInfo = userInfo[msg.sender];
         uint256 _userTierIndex = _userInfo.tierIndex;
-        Tier memory _tier = tiers[_userTierIndex];
+        Tier memory _userTier = _userInfo.tier;
         uint32 currentDay = getCurrentDay();
 
         require(_userInfo.amount > 0, "User has zero deposit");
@@ -279,38 +239,19 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if (currentDay < endDay) {
             require(
-                currentDay - _userInfo.firstDayLocked >= _tier.lockPeriod,
+                currentDay - _userInfo.firstDayLocked >= _userTier.lockPeriod,
                 "Cannot withdraw yet"
             );
         }
 
-        (uint32 lockDays, uint32 unlockDays) = getMultiplier(
-            _userInfo.firstDayLocked,
-            _userInfo.lastDayAction,
-            _tier.lockPeriod
-        );
-
-        uint256 totalInterest = calculateAccruedInterest(
-            _userInfo.amount,
-            _tier.minAmount,
-            _tier.lockDayPercent,
-            unlockDayPercentBase,
-            lockDays,
-            unlockDays
-        );
+        (
+            uint256 totalInterest,
+            uint256 pccTotalInterest
+        ) = calculateTotalInterest(_userInfo);
 
         if (totalInterest > 0) {
             safeRewardTransfer(msg.sender, totalInterest); // require totalInterest >= reward treasury balance
         }
-
-        uint256 pccTotalInterest = calculateAccruedInterest(
-            _userInfo.amount,
-            _tier.minAmount,
-            _tier.pccLockDayPercent,
-            pccUnlockDayPercentBase,
-            lockDays,
-            unlockDays
-        );
 
         if (pccTotalInterest > 0) {
             pccRewardToken.mint(msg.sender, pccTotalInterest);
@@ -320,7 +261,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if (_userTierIndex != currentTierIndex) {
             _userInfo.tierIndex = currentTierIndex;
-
+            _userInfo.tier = tiers[currentTierIndex];
             tiers[_userTierIndex].totalDeposited -= _userInfo.amount;
             tiers[currentTierIndex].totalDeposited +=
                 _userInfo.amount -
@@ -338,36 +279,12 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     function harvest() public nonReentrant notContract {
         UserInfo storage _userInfo = userInfo[msg.sender];
-
-        uint256 _userTierIndex = _userInfo.tierIndex;
-
-        Tier memory _tier = tiers[_userTierIndex];
-
         uint32 currentDay = getCurrentDay();
 
-        (uint32 lockDays, uint32 unlockDays) = getMultiplier(
-            _userInfo.firstDayLocked,
-            _userInfo.lastDayAction,
-            _tier.lockPeriod
-        );
-
-        uint256 totalInterest = calculateAccruedInterest(
-            _userInfo.amount,
-            _tier.minAmount,
-            _tier.lockDayPercent,
-            unlockDayPercentBase,
-            lockDays,
-            unlockDays
-        );
-
-        uint256 pccTotalInterest = calculateAccruedInterest(
-            _userInfo.amount,
-            _tier.minAmount,
-            _tier.pccLockDayPercent,
-            pccUnlockDayPercentBase,
-            lockDays,
-            unlockDays
-        );
+        (
+            uint256 totalInterest,
+            uint256 pccTotalInterest
+        ) = calculateTotalInterest(_userInfo);
 
         _userInfo.lastDayAction = currentDay;
 
@@ -385,29 +302,29 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     function getMultiplier(
         uint32 _firstDayLocked,
         uint32 _lastDayAction,
-        uint32 _tierLockPeriod
+        uint32 _tierLockPeriod,
+        uint32 _currentDay
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
-        uint32 currentDay = getCurrentDay();
         uint32 lockEndDay = _firstDayLocked + _tierLockPeriod;
 
         if (_lastDayAction == 0) return (0, 0);
 
-        if ((currentDay >= _lastDayAction) && (currentDay <= endDay)) {
-            if (lockEndDay < currentDay) {
+        if ((_currentDay >= _lastDayAction) && (_currentDay <= endDay)) {
+            if (lockEndDay < _currentDay) {
                 if (lockEndDay < _lastDayAction) {
                     lockDays = 0;
-                    unlockDays = currentDay - _lastDayAction;
+                    unlockDays = _currentDay - _lastDayAction;
                 } else {
                     lockDays = lockEndDay - _lastDayAction;
-                    unlockDays = currentDay - lockEndDay;
+                    unlockDays = _currentDay - lockEndDay;
                 }
             } else {
-                lockDays = currentDay - _lastDayAction;
+                lockDays = _currentDay - _lastDayAction;
                 unlockDays = 0;
             }
         } else if (
-            (currentDay >= _lastDayAction) &&
-            (currentDay > endDay) &&
+            (_currentDay >= _lastDayAction) &&
+            (_currentDay > endDay) &&
             (endDay >= _lastDayAction)
         ) {
             if (lockEndDay < endDay) {
@@ -446,6 +363,41 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             _unlockDayPercentBase *
             _unlockDays) / PERCENT_BASE;
         accruedInterest = lockInterest + unlockInterest;
+    }
+
+    function calculateTotalInterest(
+        UserInfo memory _userInfo
+    ) internal view returns (uint256 totalInterest, uint256 pccTotalInterest) {
+        Tier memory _userTier = _userInfo.tier;
+
+        uint32 currentDay = getCurrentDay();
+
+        (uint32 lockDays, uint32 unlockDays) = getMultiplier(
+            _userInfo.firstDayLocked,
+            _userInfo.lastDayAction,
+            _userTier.lockPeriod,
+            currentDay
+        );
+
+        totalInterest += calculateAccruedInterest(
+            _userInfo.amount,
+            _userTier.minAmount,
+            _userTier.lockDayPercent,
+            unlockDayPercentBase,
+            lockDays,
+            unlockDays
+        );
+
+        pccTotalInterest += calculateAccruedInterest(
+            _userInfo.amount,
+            _userTier.minAmount,
+            _userTier.pccLockDayPercent,
+            pccUnlockDayPercentBase,
+            lockDays,
+            unlockDays
+        );
+
+        return (totalInterest, pccTotalInterest);
     }
 
     function setDepositEnabled(bool _state) external onlyOwner {
