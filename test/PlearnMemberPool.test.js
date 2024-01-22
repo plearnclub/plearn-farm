@@ -633,40 +633,6 @@ describe("PlearnMemberPool contract", function () {
     });
   });
 
-  describe("Contract Settings", function () {
-    it("should allow owner to set the end day", async function () {
-      const newEndDay = 21500;
-
-      await expect(plearnMemberPool.connect(owner).setEndDay(newEndDay))
-        .to.emit(plearnMemberPool, "endDayUpdated")
-        .withArgs(newEndDay);
-
-      expect(await plearnMemberPool.endDay()).to.equal(newEndDay);
-    });
-
-    it("should reject setting end day to a past date", async function () {
-      const currentDay = await plearnMemberPool.getCurrentDay();
-
-      await expect(
-        plearnMemberPool.connect(owner).setEndDay(currentDay - 200)
-      ).to.be.revertedWith("End day earlier than current day");
-    });
-
-    it("should allow owner to enable or disable deposits", async function () {
-      await expect(plearnMemberPool.connect(owner).setDepositEnabled(true))
-        .to.emit(plearnMemberPool, "depositEnabledUpdated")
-        .withArgs(true);
-
-      expect(await plearnMemberPool.depositEnabled()).to.equal(true);
-
-      await expect(plearnMemberPool.connect(owner).setDepositEnabled(false))
-        .to.emit(plearnMemberPool, "depositEnabledUpdated")
-        .withArgs(false);
-
-      expect(await plearnMemberPool.depositEnabled()).to.equal(false);
-    });
-  });
-
   describe("Tier Upgrade", function () {
     const initialDeposit = toBigNumber("1000");
     const additionalDeposit = toBigNumber("9000");
@@ -746,6 +712,49 @@ describe("PlearnMemberPool contract", function () {
       expect(userInfo.firstDayLocked).to.be.above(firstDayLockedBefore);
 
       expect(userInfo.amount).to.equal(initialDeposit);
+    });
+  });
+
+  describe("Contract Settings", function () {
+    it("should allow owner to set the end day", async function () {
+      const newEndDay = 21500;
+
+      await expect(plearnMemberPool.connect(owner).setEndDay(newEndDay))
+        .to.emit(plearnMemberPool, "endDayUpdated")
+        .withArgs(newEndDay);
+
+      expect(await plearnMemberPool.endDay()).to.equal(newEndDay);
+    });
+
+    it("should reject setting end day to a past date", async function () {
+      const currentDay = await plearnMemberPool.getCurrentDay();
+
+      await expect(
+        plearnMemberPool.connect(owner).setEndDay(currentDay - 200)
+      ).to.be.revertedWith("End day earlier than current day");
+    });
+
+    it("should allow owner to enable or disable deposits", async function () {
+      await expect(plearnMemberPool.connect(owner).setDepositEnabled(true))
+        .to.emit(plearnMemberPool, "depositEnabledUpdated")
+        .withArgs(true);
+
+      expect(await plearnMemberPool.depositEnabled()).to.equal(true);
+
+      await expect(plearnMemberPool.connect(owner).setDepositEnabled(false))
+        .to.emit(plearnMemberPool, "depositEnabledUpdated")
+        .withArgs(false);
+
+      expect(await plearnMemberPool.depositEnabled()).to.equal(false);
+    });
+
+    it("should reject setting end day after Period has already ended", async function () {
+      const currentDay = await plearnMemberPool.getCurrentDay();
+      const endDay = await plearnMemberPool.endDay();
+      await increaseTime(endDay * 86400);
+      await expect(
+        plearnMemberPool.connect(owner).setEndDay(currentDay - 200)
+      ).to.be.revertedWith("Period has already ended, cannot be extended");
     });
   });
 
