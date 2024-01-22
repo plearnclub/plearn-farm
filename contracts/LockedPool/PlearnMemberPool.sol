@@ -344,21 +344,14 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     function calculateAccruedInterest(
         uint256 _amount,
         uint256 _userTierMinAmount,
-        uint32 _lockDayPercent,
-        uint32 _unlockDayPercentBase,
-        uint32 _lockDays,
-        uint32 _unlockDays
+        uint32 _dayPercent,
+        uint32 _days
     ) public pure returns (uint256 accruedInterest) {
         if (_amount < _userTierMinAmount) {
             return 0;
         }
 
-        uint256 lockInterest = (_amount * _lockDayPercent * _lockDays) /
-            PERCENT_BASE;
-        uint256 unlockInterest = (_amount *
-            _unlockDayPercentBase *
-            _unlockDays) / PERCENT_BASE;
-        accruedInterest = lockInterest + unlockInterest;
+        accruedInterest = (_amount * _dayPercent * _days) / PERCENT_BASE;
     }
 
     function calculateTotalInterest(
@@ -375,23 +368,37 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             currentDay
         );
 
-        totalInterest += calculateAccruedInterest(
+        uint256 plnLockInterest = calculateAccruedInterest(
             _userInfo.amount,
             _userTier.minAmount,
             _userTier.lockDayPercent,
+            lockDays
+        );
+
+        uint256 plnUnlockInterest = calculateAccruedInterest(
+            _userInfo.amount,
+            _userTier.minAmount,
             unlockDayPercentBase,
-            lockDays,
             unlockDays
         );
 
-        pccTotalInterest += calculateAccruedInterest(
+        totalInterest = plnLockInterest + plnUnlockInterest;
+
+        uint256 pccLockInterest = calculateAccruedInterest(
             _userInfo.amount,
             _userTier.minAmount,
             _userTier.pccLockDayPercent,
+            lockDays
+        );
+
+        uint256 pccUnlockInterest = calculateAccruedInterest(
+            _userInfo.amount,
+            _userTier.minAmount,
             pccUnlockDayPercentBase,
-            lockDays,
             unlockDays
         );
+
+        pccTotalInterest = pccLockInterest + pccUnlockInterest;
 
         return (totalInterest, pccTotalInterest);
     }
@@ -403,6 +410,10 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     }
 
     function setEndDay(uint32 _endDay) external onlyOwner {
+        require(
+            getCurrentDay() < endDay,
+            "Period has already ended, cannot be extended"
+        );
         require(_endDay >= getCurrentDay(), "End day earlier than current day");
         endDay = _endDay;
         emit endDayUpdated(_endDay);
