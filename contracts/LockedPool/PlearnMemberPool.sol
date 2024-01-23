@@ -16,7 +16,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     using SafeBEP20 for IBEP20;
 
     uint32 public endDay;
-    bool public depositEnabled;
+    uint32 public depositEndDay;
 
     IBEP20 public stakedToken;
     IBEP20 public plnRewardToken;
@@ -54,9 +54,9 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         IBEP20Mintable _pccRewardToken,
         PlearnRewardTreasury _rewardTreasury,
         uint32 _endDay,
+        uint32 _depositEndDay,
         uint32 _unlockDayPercentBase,
-        uint32 _pccUnlockDayPercentBase,
-        bool _depositEnabled
+        uint32 _pccUnlockDayPercentBase
     ) {
         require(_endDay >= getCurrentDay(), "End day earlier than current day");
         stakedToken = _tokenAddress;
@@ -66,7 +66,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         endDay = _endDay;
         unlockDayPercentBase = _unlockDayPercentBase;
         pccUnlockDayPercentBase = _pccUnlockDayPercentBase;
-        depositEnabled = _depositEnabled;
+        depositEndDay = _depositEndDay;
     }
 
     modifier notContract() {
@@ -171,7 +171,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         UserInfo storage _userInfo = userInfo[msg.sender];
         uint32 currentDay = getCurrentDay();
 
-        require(depositEnabled && currentDay < endDay, "Deposit is disabled");
+        require(currentDay < depositEndDay, "Deposit is disabled");
 
         require(
             _tierIndex >= _userInfo.tierIndex,
@@ -187,7 +187,6 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             _userInfo.amount + _amount <= _tier.maxAmount,
             "Amount over tier limits"
         );
-        require(currentDay + _tier.lockPeriod < endDay, "Too late");
 
         if (currentDay - _userInfo.firstDayLocked >= _tier.lockPeriod) {
             _userInfo.firstDayLocked = currentDay;
@@ -403,10 +402,10 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         return (totalInterest, pccTotalInterest);
     }
 
-    function setDepositEnabled(bool _state) external onlyOwner {
-        depositEnabled = _state;
+    function setDepositEndDay(uint32 _endDay) external onlyOwner {
+        depositEndDay = _endDay;
 
-        emit depositEnabledUpdated(_state);
+        emit depositEndDayUpdated(_endDay);
     }
 
     function setEndDay(uint32 _endDay) external onlyOwner {
@@ -417,6 +416,24 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         require(_endDay >= getCurrentDay(), "End day earlier than current day");
         endDay = _endDay;
         emit endDayUpdated(_endDay);
+    }
+
+    function setUnlockDayPercentBase(
+        uint32 _unlockDayPercentBase,
+        uint32 _pccUnlockDayPercentBase
+    ) external onlyOwner {
+        require(
+            stakedToken.balanceOf(address(this)) == 0,
+            "Cannot update base percent when tokens are already staked"
+        );
+
+        require(depositEndDay == 0, "Deposit is enabled");
+        unlockDayPercentBase = _unlockDayPercentBase;
+        pccUnlockDayPercentBase = _pccUnlockDayPercentBase;
+        emit UnlockDayPercentBaseUpdated(
+            _unlockDayPercentBase,
+            _pccUnlockDayPercentBase
+        );
     }
 
     function withdrawToken(
@@ -437,9 +454,13 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     event Withdraw(address indexed user, uint256 amount);
     event Harvest(address indexed user, uint256 amount, uint256 pccAmount);
     event endDayUpdated(uint32 endDay);
-    event depositEnabledUpdated(bool state);
+    event depositEndDayUpdated(uint32 endDay);
     event TierAdded(uint32 lockPeriod, uint256 tierIndex);
     event TierUpdated(uint256 tierIndex);
+    event UnlockDayPercentBaseUpdated(
+        uint32 unlockDayPercentBase,
+        uint32 pccUnlockDayPercentBase
+    );
     event TokenWithdraw(
         address indexed token,
         uint256 amount,
