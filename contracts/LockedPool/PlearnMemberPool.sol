@@ -240,7 +240,6 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         Tier memory _userTier = _userInfo.tier;
         uint32 currentDay = getCurrentDay();
 
-        require(_userInfo.amount > 0, "User has zero deposit");
         require(_userInfo.amount >= _amount, "Amount to withdraw too high");
 
         if (currentDay < endDay) {
