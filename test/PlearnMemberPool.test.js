@@ -39,9 +39,9 @@ describe("PlearnMemberPool contract", function () {
       phillCoin.address, // _pccRewardToken
       plearnRewardTreasury.address, // _rewardTreasury
       21185, // _endDay
+      21185, // _depositEndDay
       10000, // _unlockDayPercentBase
-      10000, // _pccUnlockDayPercentBase
-      true // _depositEnabled
+      10000 // _pccUnlockDayPercentBase
     );
     await plearnMemberPool.deployed();
 
@@ -133,6 +133,22 @@ describe("PlearnMemberPool contract", function () {
       const userInfo = await plearnMemberPool.userInfo(user1.address);
       expect(userInfo.amount).to.equal(depositAmount);
       expect(userInfo.tierIndex).to.equal(tierIndex);
+    });
+
+    it("should reject deposit when depositEndDay < current day", async function () {
+      const newEndDay = 0;
+      await plearnMemberPool.connect(owner).setDepositEndDay(newEndDay);
+      const depositAmount = toBigNumber("10000");
+      const tierIndex = 1;
+
+      await plearnToken.transfer(user1.address, depositAmount);
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, depositAmount);
+
+      await expect(
+        plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount)
+      ).to.be.revertedWith("Deposit is disabled");
     });
 
     it("should reject deposit below tier minimum", async function () {
@@ -701,7 +717,7 @@ describe("PlearnMemberPool contract", function () {
       const newDeposit = toBigNumber("0");
       const tier = await plearnMemberPool.tiers(tierIndex);
       const userInfoBefore = await plearnMemberPool.userInfo(user1.address);
-      const firstDayLockedBefore = userInfoBefore.firstDayLocked;
+      const depositStartDayBefore = userInfoBefore.depositStartDay;
       await expect(
         plearnMemberPool.connect(user1).deposit(tierIndex, newDeposit)
       )
@@ -709,7 +725,7 @@ describe("PlearnMemberPool contract", function () {
         .withArgs(user1.address, tierIndex, newDeposit);
 
       const userInfo = await plearnMemberPool.userInfo(user1.address);
-      expect(userInfo.firstDayLocked).to.be.above(firstDayLockedBefore);
+      expect(userInfo.depositStartDay).to.be.above(depositStartDayBefore);
 
       expect(userInfo.amount).to.equal(initialDeposit);
     });
@@ -734,18 +750,74 @@ describe("PlearnMemberPool contract", function () {
       ).to.be.revertedWith("End day earlier than current day");
     });
 
-    it("should allow owner to enable or disable deposits", async function () {
-      await expect(plearnMemberPool.connect(owner).setDepositEnabled(true))
-        .to.emit(plearnMemberPool, "depositEnabledUpdated")
-        .withArgs(true);
+    it("should allow owner to set the deposit end day", async function () {
+      const newEndDay = 21500;
+      await expect(plearnMemberPool.connect(owner).setDepositEndDay(newEndDay))
+        .to.emit(plearnMemberPool, "depositEndDayUpdated")
+        .withArgs(newEndDay);
 
-      expect(await plearnMemberPool.depositEnabled()).to.equal(true);
+      expect(await plearnMemberPool.depositEndDay()).to.equal(newEndDay);
+    });
 
-      await expect(plearnMemberPool.connect(owner).setDepositEnabled(false))
-        .to.emit(plearnMemberPool, "depositEnabledUpdated")
-        .withArgs(false);
+    it("should allow owner to set unlock day percent base", async function () {
+      await plearnMemberPool.connect(owner).setDepositEndDay(0);
+      const unlockDayPercentBase = 100000;
+      const pccUnlockDayPercentBase = 100000;
 
-      expect(await plearnMemberPool.depositEnabled()).to.equal(false);
+      await expect(
+        plearnMemberPool
+          .connect(owner)
+          .setUnlockDayPercentBase(
+            unlockDayPercentBase,
+            pccUnlockDayPercentBase
+          )
+      )
+        .to.emit(plearnMemberPool, "UnlockDayPercentBaseUpdated")
+        .withArgs(unlockDayPercentBase, pccUnlockDayPercentBase);
+
+      expect(await plearnMemberPool.unlockDayPercentBase()).to.equal(
+        unlockDayPercentBase
+      );
+      expect(await plearnMemberPool.pccUnlockDayPercentBase()).to.equal(
+        pccUnlockDayPercentBase
+      );
+    });
+
+    it("should reject owner to set unlock day percent base when tokens are already staked and Deposit is enabled", async function () {
+      const currentDay = await plearnMemberPool.getCurrentDay();
+      const unlockDayPercentBase = 100000;
+      const pccUnlockDayPercentBase = 100000;
+
+      await expect(
+        plearnMemberPool
+          .connect(owner)
+          .setUnlockDayPercentBase(
+            unlockDayPercentBase,
+            pccUnlockDayPercentBase
+          )
+      ).to.be.revertedWith("Deposit is enabled");
+
+      await plearnMemberPool.connect(owner).setDepositEndDay(currentDay + 200);
+
+      const depositAmount = toBigNumber("10000");
+      tierIndex = 1;
+
+      await plearnToken.transfer(user1.address, depositAmount);
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, depositAmount);
+      await plearnMemberPool.connect(user1).deposit(tierIndex, depositAmount);
+
+      await expect(
+        plearnMemberPool
+          .connect(owner)
+          .setUnlockDayPercentBase(
+            unlockDayPercentBase,
+            pccUnlockDayPercentBase
+          )
+      ).to.be.revertedWith(
+        "Cannot update base percent when tokens are already staked"
+      );
     });
 
     it("should reject setting end day after Period has already ended", async function () {
