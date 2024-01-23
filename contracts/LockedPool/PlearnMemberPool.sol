@@ -154,11 +154,14 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         pccAccruedInterest = pccTotalInterest;
 
         uint32 lockEndDay = _userInfo.depositStartDay + _userTier.lockPeriod;
-        endLockTime = _userInfo.amount > 0
-            ? lockEndDay < endDay
-                ? lockEndDay * 86400 + 43200
-                : endDay * 86400 + 43200
-            : _userInfo.lastDayAction * 86400 + 43200;
+        endLockTime =
+            (
+                _userInfo.amount > 0
+                    ? lockEndDay < endDay ? lockEndDay : endDay
+                    : _userInfo.lastDayAction
+            ) *
+            86400 +
+            43200;
     }
 
     function deposit(
@@ -203,16 +206,17 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
 
-        if (_userInfo.depositStartDay + _tier.lockPeriod <= currentDay) {
+        if (
+            _userInfo.depositStartDay + _userInfo.tier.lockPeriod <= currentDay
+        ) {
             _userInfo.depositStartDay = currentDay;
         }
 
+        tiers[_tierIndex].totalDeposited += _amount;
         if (_userInfo.tierIndex != _tierIndex) {
             tiers[_userInfo.tierIndex].totalDeposited -= _userInfo.amount;
-            tiers[_tierIndex].totalDeposited += _userInfo.amount + _amount;
+            tiers[_tierIndex].totalDeposited += _userInfo.amount;
             _userInfo.tierIndex = _tierIndex;
-        } else {
-            tiers[_tierIndex].totalDeposited += _amount;
         }
 
         _userInfo.lastDayAction = currentDay;
@@ -223,13 +227,13 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     }
 
     function withdraw(uint256 _amount) public nonReentrant notContract {
+        require(_amount > 0, "Withdraw amount must be greater than 0");
         UserInfo storage _userInfo = userInfo[msg.sender];
         uint256 _userTierIndex = _userInfo.tierIndex;
         Tier memory _userTier = _userInfo.tier;
         uint32 currentDay = getCurrentDay();
 
         require(_userInfo.amount > 0, "User has zero deposit");
-        require(_amount > 0, "Withdraw amount must be greater than 0");
         require(_userInfo.amount >= _amount, "Amount to withdraw too high");
 
         if (currentDay < endDay) {
@@ -342,14 +346,9 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     function calculateAccruedInterest(
         uint256 _amount,
-        uint256 _userTierMinAmount,
         uint32 _dayPercent,
         uint32 _days
     ) public pure returns (uint256 accruedInterest) {
-        if (_amount < _userTierMinAmount) {
-            return 0;
-        }
-
         accruedInterest = (_amount * _dayPercent * _days) / PERCENT_BASE;
     }
 
@@ -369,14 +368,12 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         uint256 plnLockInterest = calculateAccruedInterest(
             _userInfo.amount,
-            _userTier.minAmount,
             _userTier.lockDayPercent,
             lockDays
         );
 
         uint256 plnUnlockInterest = calculateAccruedInterest(
             _userInfo.amount,
-            _userTier.minAmount,
             unlockDayPercentBase,
             unlockDays
         );
@@ -385,14 +382,12 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         uint256 pccLockInterest = calculateAccruedInterest(
             _userInfo.amount,
-            _userTier.minAmount,
             _userTier.pccLockDayPercent,
             lockDays
         );
 
         uint256 pccUnlockInterest = calculateAccruedInterest(
             _userInfo.amount,
-            _userTier.minAmount,
             pccUnlockDayPercentBase,
             unlockDays
         );
@@ -441,10 +436,6 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint256 _amount,
         address _to
     ) external onlyOwner {
-        require(
-            address(_token) != address(0) && _to != address(0),
-            "Cant be zero address"
-        );
         _token.safeTransfer(_to, _amount);
         emit TokenWithdraw(address(_token), _amount, _to);
     }
