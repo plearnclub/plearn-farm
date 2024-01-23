@@ -11,7 +11,7 @@ contract PhillCoin is ERC20, ERC20Burnable, AccessControl {
     constructor(
         address defaultAdmin,
         address minter
-    ) ERC20("PhillCoin", "PCC") {
+    ) ERC20("Phill Coin", "PCC") {
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
         _grantRole(MINTER_ROLE, minter);
     }

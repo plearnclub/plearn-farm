@@ -114,6 +114,22 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         rewardTreasury = _newRewardTreasury;
     }
 
+    function transferInterest(UserInfo storage _userInfo) internal {
+        (
+            uint256 totalInterest,
+            uint256 pccTotalInterest
+        ) = calculateTotalInterest(_userInfo);
+
+        if (totalInterest > 0) {
+            safeRewardTransfer(msg.sender, totalInterest); // require totalInterest >= reward treasury balance
+        }
+
+        if (pccTotalInterest > 0) {
+            pccRewardToken.mint(msg.sender, pccTotalInterest);
+        }
+        emit Harvest(msg.sender, totalInterest, pccTotalInterest);
+    }
+
     function safeRewardTransfer(address _to, uint256 _amount) internal {
         require(
             plnRewardToken.balanceOf(address(rewardTreasury)) >= _amount,
@@ -192,16 +208,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         );
 
         if (_userInfo.amount != 0) {
-            (
-                uint256 totalInterest,
-                uint256 pccTotalInterest
-            ) = calculateTotalInterest(_userInfo);
-            if (totalInterest > 0) {
-                safeRewardTransfer(msg.sender, totalInterest); // require totalInterest >= reward treasury balance
-            }
-            if (pccTotalInterest > 0) {
-                pccRewardToken.mint(msg.sender, pccTotalInterest);
-            }
+            transferInterest(_userInfo);
         }
 
         stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
@@ -243,18 +250,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             );
         }
 
-        (
-            uint256 totalInterest,
-            uint256 pccTotalInterest
-        ) = calculateTotalInterest(_userInfo);
-
-        if (totalInterest > 0) {
-            safeRewardTransfer(msg.sender, totalInterest); // require totalInterest >= reward treasury balance
-        }
-
-        if (pccTotalInterest > 0) {
-            pccRewardToken.mint(msg.sender, pccTotalInterest);
-        }
+        transferInterest(_userInfo);
 
         uint256 currentTierIndex = getTierIndex(_userInfo.amount - _amount);
 
@@ -279,23 +275,8 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     function harvest() public nonReentrant notContract {
         UserInfo storage _userInfo = userInfo[msg.sender];
         uint32 currentDay = getCurrentDay();
-
-        (
-            uint256 totalInterest,
-            uint256 pccTotalInterest
-        ) = calculateTotalInterest(_userInfo);
-
+        transferInterest(_userInfo);
         _userInfo.lastDayAction = currentDay;
-
-        if (totalInterest > 0) {
-            safeRewardTransfer(msg.sender, totalInterest); // require totalInterest >= reward treasury balance
-        }
-
-        if (pccTotalInterest > 0) {
-            pccRewardToken.mint(msg.sender, pccTotalInterest);
-        }
-
-        emit Harvest(msg.sender, totalInterest, pccTotalInterest);
     }
 
     function getMultiplier(
