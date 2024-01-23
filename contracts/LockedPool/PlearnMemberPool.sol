@@ -307,23 +307,29 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     function calculateDaysWithinContractPeriod(
         uint32 _aprStartDay,
-        uint32 lockEndDay,
+        uint32 _lockEndDay,
         uint32 _currentDay
     ) internal pure returns (uint32 lockDays, uint32 unlockDays) {
-        uint32 aprEndDay = lockEndDay < _currentDay ? lockEndDay : _currentDay;
+        uint32 aprEndDay = _lockEndDay < _currentDay
+            ? _lockEndDay
+            : _currentDay;
+
+        uint32 unlockStartDay = (_lockEndDay >= _aprStartDay)
+            ? aprEndDay
+            : _aprStartDay;
+
         lockDays = (aprEndDay >= _aprStartDay) ? aprEndDay - _aprStartDay : 0;
-        unlockDays = (lockEndDay >= _aprStartDay)
-            ? _currentDay - aprEndDay
-            : _currentDay - _aprStartDay;
+
+        unlockDays = _currentDay - unlockStartDay;
     }
 
     function calculateDaysBeyondContractPeriod(
         uint32 _aprStartDay,
-        uint32 lockEndDay
+        uint32 _lockEndDay
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
-        uint32 aprEndDay = lockEndDay < endDay ? lockEndDay : endDay;
+        uint32 aprEndDay = _lockEndDay < endDay ? _lockEndDay : endDay;
         lockDays = (aprEndDay >= _aprStartDay) ? aprEndDay - _aprStartDay : 0;
-        unlockDays = (lockEndDay >= _aprStartDay)
+        unlockDays = (_lockEndDay >= _aprStartDay)
             ? endDay - aprEndDay
             : endDay - _aprStartDay;
     }
