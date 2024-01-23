@@ -289,38 +289,54 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if (_lastDayAction == 0) return (0, 0);
 
-        if ((_currentDay >= _lastDayAction) && (_currentDay <= endDay)) {
-            if (lockEndDay < _currentDay) {
-                if (lockEndDay < _lastDayAction) {
-                    lockDays = 0;
-                    unlockDays = _currentDay - _lastDayAction;
-                } else {
-                    lockDays = lockEndDay - _lastDayAction;
-                    unlockDays = _currentDay - lockEndDay;
-                }
-            } else {
-                lockDays = _currentDay - _lastDayAction;
-                unlockDays = 0;
-            }
-        } else if (
-            (_currentDay >= _lastDayAction) &&
-            (_currentDay > endDay) &&
-            (endDay >= _lastDayAction)
-        ) {
-            if (lockEndDay < endDay) {
-                if (lockEndDay < _lastDayAction) {
-                    lockDays = 0;
-                    unlockDays = endDay - _lastDayAction;
-                } else {
-                    lockDays = lockEndDay - _lastDayAction;
-                    unlockDays = endDay - lockEndDay;
-                }
-            } else {
-                lockDays = endDay - _lastDayAction;
-                unlockDays = 0;
-            }
+        if (_currentDay >= _lastDayAction && _currentDay <= endDay) {
+            (lockDays, unlockDays) = calculateDaysWithinContractPeriod(
+                _lastDayAction,
+                lockEndDay,
+                _currentDay
+            );
+        } else if (_currentDay > endDay && endDay >= _lastDayAction) {
+            (lockDays, unlockDays) = calculateDaysBeyondContractPeriod(
+                _lastDayAction,
+                lockEndDay
+            );
         } else {
             lockDays = 0;
+            unlockDays = 0;
+        }
+    }
+
+    function calculateDaysWithinContractPeriod(
+        uint32 _lastDayAction,
+        uint32 lockEndDay,
+        uint32 _currentDay
+    ) internal pure returns (uint32 lockDays, uint32 unlockDays) {
+        if (lockEndDay < _currentDay) {
+            lockDays = (lockEndDay >= _lastDayAction)
+                ? lockEndDay - _lastDayAction
+                : 0;
+            unlockDays = (lockEndDay >= _lastDayAction)
+                ? _currentDay - lockEndDay
+                : _currentDay - _lastDayAction;
+        } else {
+            lockDays = _currentDay - _lastDayAction;
+            unlockDays = 0;
+        }
+    }
+
+    function calculateDaysBeyondContractPeriod(
+        uint32 _lastDayAction,
+        uint32 lockEndDay
+    ) internal view returns (uint32 lockDays, uint32 unlockDays) {
+        if (lockEndDay < endDay) {
+            lockDays = (lockEndDay >= _lastDayAction)
+                ? lockEndDay - _lastDayAction
+                : 0;
+            unlockDays = (lockEndDay >= _lastDayAction)
+                ? endDay - lockEndDay
+                : endDay - _lastDayAction;
+        } else {
+            lockDays = endDay - _lastDayAction;
             unlockDays = 0;
         }
     }
