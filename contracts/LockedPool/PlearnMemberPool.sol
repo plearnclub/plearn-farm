@@ -188,10 +188,6 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             "Amount over tier limits"
         );
 
-        if (currentDay - _userInfo.depositStartDay >= _tier.lockPeriod) {
-            _userInfo.depositStartDay = currentDay;
-        }
-
         if (_userInfo.amount != 0) {
             (
                 uint256 totalInterest,
@@ -206,6 +202,10 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         }
 
         stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
+
+        if (_userInfo.depositStartDay + _tier.lockPeriod <= currentDay) {
+            _userInfo.depositStartDay = currentDay;
+        }
 
         if (_userInfo.tierIndex != _tierIndex) {
             tiers[_userInfo.tierIndex].totalDeposited -= _userInfo.amount;
