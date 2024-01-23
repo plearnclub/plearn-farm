@@ -38,7 +38,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     struct UserInfo {
         uint256 amount;
-        uint32 firstDayLocked;
+        uint32 depositStartDay;
         uint32 lastDayAction;
         uint256 tierIndex;
         Tier tier;
@@ -153,7 +153,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         accruedInterest = totalInterest;
         pccAccruedInterest = pccTotalInterest;
 
-        uint32 lockEndDay = _userInfo.firstDayLocked + _userTier.lockPeriod;
+        uint32 lockEndDay = _userInfo.depositStartDay + _userTier.lockPeriod;
         endLockTime = _userInfo.amount > 0
             ? lockEndDay < endDay
                 ? lockEndDay * 86400 + 43200
@@ -188,8 +188,8 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             "Amount over tier limits"
         );
 
-        if (currentDay - _userInfo.firstDayLocked >= _tier.lockPeriod) {
-            _userInfo.firstDayLocked = currentDay;
+        if (currentDay - _userInfo.depositStartDay >= _tier.lockPeriod) {
+            _userInfo.depositStartDay = currentDay;
         }
 
         if (_userInfo.amount != 0) {
@@ -234,7 +234,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if (currentDay < endDay) {
             require(
-                currentDay - _userInfo.firstDayLocked >= _userTier.lockPeriod,
+                currentDay - _userInfo.depositStartDay >= _userTier.lockPeriod,
                 "Cannot withdraw yet"
             );
         }
@@ -295,12 +295,12 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     }
 
     function getMultiplier(
-        uint32 _firstDayLocked,
+        uint32 _depositStartDay,
         uint32 _lastDayAction,
         uint32 _tierLockPeriod,
         uint32 _currentDay
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
-        uint32 lockEndDay = _firstDayLocked + _tierLockPeriod;
+        uint32 lockEndDay = _depositStartDay + _tierLockPeriod;
 
         if (_lastDayAction == 0) return (0, 0);
 
@@ -361,7 +361,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint32 currentDay = getCurrentDay();
 
         (uint32 lockDays, uint32 unlockDays) = getMultiplier(
-            _userInfo.firstDayLocked,
+            _userInfo.depositStartDay,
             _userInfo.lastDayAction,
             _userTier.lockPeriod,
             currentDay
