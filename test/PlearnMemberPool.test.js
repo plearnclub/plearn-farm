@@ -202,8 +202,10 @@ describe("PlearnMemberPool contract", function () {
 
     it("should allow user to withdraw after lock period", async function () {
       const withdrawAmount = toBigNumber("5000");
-      const tierIndex = 3;
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBeforeWithdraw = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeWithdraw.tier; // tier index = 3
 
       await increaseTime(tier.lockPeriod * 86400); // 180 days
 
@@ -241,8 +243,11 @@ describe("PlearnMemberPool contract", function () {
 
     it("Tier Downgrade on Withdrawal Below Current Tier Minimum", async function () {
       const withdrawAmount = toBigNumber("40000");
-      const tierIndex = 3;
-      const tier = await plearnMemberPool.tiers(tierIndex);
+
+      const userInfoBeforeWithdraw = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeWithdraw.tier; // tier index = 3
 
       await increaseTime(tier.lockPeriod * 86400); // 180 days
 
@@ -257,8 +262,10 @@ describe("PlearnMemberPool contract", function () {
 
     it("should allow user to withdraw and current tier is No tier", async function () {
       const withdrawAmount = toBigNumber("49900");
-      const tierIndex = 3;
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBeforeWithdraw = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeWithdraw.tier; // tier index = 3
 
       await increaseTime(tier.lockPeriod * 86400); // 180 days
 
@@ -322,8 +329,10 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should allow user to harvest rewards after unlock period + 10 days", async function () {
-      const tierIndex = 1;
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBeforeHarvest = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeHarvest.tier; // tier index = 1
       const unlockTime = tier.lockPeriod * 86400 + 10 * 86400;
       await increaseTime(unlockTime);
 
@@ -384,7 +393,8 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should correctly calculate rewards after the lock period ends", async function () {
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfo = await plearnMemberPool.userInfo(user1.address);
+      const tier = await userInfo.tier; // tier index = 2
       await increaseTime(tier.lockPeriod * 86400); // 90 days
 
       const [, , accruedInterest, pccAccruedInterest] =
@@ -395,7 +405,10 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should correctly calculate interest after the lock period ends and unlock after 7 days", async function () {
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBeforeHarvest = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeHarvest.tier; // tier index = 2
       await increaseTime(tier.lockPeriod * 86400); // 90 days
       await plearnMemberPool.connect(user1).harvest();
       await increaseTime(7 * 86400); // 7 days
@@ -473,7 +486,10 @@ describe("PlearnMemberPool contract", function () {
 
     it("should correctly calculate rewards after Tier Downgrade on Withdrawal Below Current Tier Minimum", async function () {
       const withdrawAmount = toBigNumber("9000");
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBeforeWithdraw = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeWithdraw.tier; // tier index = 2
 
       await increaseTime(tier.lockPeriod * 86400); // 90 days
 
@@ -512,7 +528,7 @@ describe("PlearnMemberPool contract", function () {
       };
       await increaseTime(10 * 86400); // 10 days 10 PLN, 10 PCC
       await plearnMemberPool.setTier(tierIndex, updatedTier);
-      const tier = await plearnMemberPool.tiers(tierIndex);
+
       await increaseTime(81 * 86400); // 20 days
       const [, , accruedInterest, pccAccruedInterest] =
         await plearnMemberPool.getUserInfo(user1.address);
@@ -628,6 +644,7 @@ describe("PlearnMemberPool contract", function () {
         .withArgs(tierIndex);
 
       const setTier = await plearnMemberPool.tiers(tierIndex);
+
       expect(setTier.lockDayPercent).to.equal(updatedTier.lockDayPercent);
       expect(setTier.pccLockDayPercent).to.equal(0);
       expect(setTier.lockPeriod).to.equal(updatedTier.lockPeriod);
@@ -651,7 +668,12 @@ describe("PlearnMemberPool contract", function () {
         minAmount: toBigNumber(5000),
         totalDeposited: 0,
       };
-      const currentTier = await plearnMemberPool.tiers(tierIndex);
+
+      const userInfoAfterDeposit = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const currentTier = await userInfoAfterDeposit.tier; // tier index = 1
+
       await plearnMemberPool.setTier(tierIndex, updatedTier);
       const userInfo = await plearnMemberPool.userInfo(user1.address);
       const userTier = await userInfo.tier;
@@ -722,12 +744,14 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should allow user to upgrade tier after lock period end and depositStartDay is updated", async function () {
-      const tierIndex = 1;
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoBeforeAdditionalDeposit = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoBeforeAdditionalDeposit.tier; // tier index = 1
       const daysToPass = tier.lockPeriod;
       await increaseTime(86400 * daysToPass); // 30 days
       const newTierIndex = 2;
-      const newTier = await plearnMemberPool.tiers(newTierIndex);
+
       await plearnToken.transfer(user1.address, additionalDeposit);
 
       await plearnMemberPool
@@ -756,13 +780,16 @@ describe("PlearnMemberPool contract", function () {
         .approve(plearnMemberPool.address, initialDeposit);
       await plearnMemberPool.connect(user1).deposit(tierIndex, initialDeposit);
 
-      const tier = await plearnMemberPool.tiers(tierIndex);
+      const userInfoAfterDeposit = await plearnMemberPool.userInfo(
+        user1.address
+      );
+      const tier = await userInfoAfterDeposit.tier; // tier index = 2
+
       await increaseTime(tier.lockPeriod * 86400); // 90 days
     });
 
     it("should extend lock period with zero deposit", async function () {
       const newDeposit = toBigNumber("0");
-      const tier = await plearnMemberPool.tiers(tierIndex);
       const userInfoBefore = await plearnMemberPool.userInfo(user1.address);
       const depositStartDayBefore = userInfoBefore.depositStartDay;
       await expect(
