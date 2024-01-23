@@ -39,7 +39,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     struct UserInfo {
         uint256 amount;
         uint32 depositStartDay;
-        uint32 lastDayAction;
+        uint32 aprStartDay;
         uint256 tierIndex;
         Tier tier;
     }
@@ -174,7 +174,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             (
                 _userInfo.amount > 0
                     ? lockEndDay < endDay ? lockEndDay : endDay
-                    : _userInfo.lastDayAction
+                    : _userInfo.aprStartDay
             ) *
             86400 +
             43200;
@@ -226,7 +226,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
             _userInfo.tierIndex = _tierIndex;
         }
 
-        _userInfo.lastDayAction = currentDay;
+        _userInfo.aprStartDay = currentDay;
         _userInfo.amount += _amount;
         _userInfo.tier = _tier;
 
@@ -266,7 +266,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         }
 
         _userInfo.amount -= _amount;
-        _userInfo.lastDayAction = currentDay;
+        _userInfo.aprStartDay = currentDay;
 
         stakedToken.safeTransfer(msg.sender, _amount);
         emit Withdraw(msg.sender, _amount);
@@ -276,28 +276,28 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         UserInfo storage _userInfo = userInfo[msg.sender];
         uint32 currentDay = getCurrentDay();
         transferInterest(_userInfo);
-        _userInfo.lastDayAction = currentDay;
+        _userInfo.aprStartDay = currentDay;
     }
 
     function getMultiplier(
         uint32 _depositStartDay,
-        uint32 _lastDayAction,
+        uint32 _aprStartDay,
         uint32 _tierLockPeriod,
         uint32 _currentDay
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
         uint32 lockEndDay = _depositStartDay + _tierLockPeriod;
 
-        if (_lastDayAction == 0) return (0, 0);
+        if (_aprStartDay == 0) return (0, 0);
 
-        if (_currentDay >= _lastDayAction && _currentDay <= endDay) {
+        if (_currentDay >= _aprStartDay && _currentDay <= endDay) {
             (lockDays, unlockDays) = calculateDaysWithinContractPeriod(
-                _lastDayAction,
+                _aprStartDay,
                 lockEndDay,
                 _currentDay
             );
-        } else if (_currentDay > endDay && endDay >= _lastDayAction) {
+        } else if (_currentDay > endDay && endDay >= _aprStartDay) {
             (lockDays, unlockDays) = calculateDaysBeyondContractPeriod(
-                _lastDayAction,
+                _aprStartDay,
                 lockEndDay
             );
         } else {
@@ -307,36 +307,36 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
     }
 
     function calculateDaysWithinContractPeriod(
-        uint32 _lastDayAction,
+        uint32 _aprStartDay,
         uint32 lockEndDay,
         uint32 _currentDay
     ) internal pure returns (uint32 lockDays, uint32 unlockDays) {
         if (lockEndDay < _currentDay) {
-            lockDays = (lockEndDay >= _lastDayAction)
-                ? lockEndDay - _lastDayAction
+            lockDays = (lockEndDay >= _aprStartDay)
+                ? lockEndDay - _aprStartDay
                 : 0;
-            unlockDays = (lockEndDay >= _lastDayAction)
+            unlockDays = (lockEndDay >= _aprStartDay)
                 ? _currentDay - lockEndDay
-                : _currentDay - _lastDayAction;
+                : _currentDay - _aprStartDay;
         } else {
-            lockDays = _currentDay - _lastDayAction;
+            lockDays = _currentDay - _aprStartDay;
             unlockDays = 0;
         }
     }
 
     function calculateDaysBeyondContractPeriod(
-        uint32 _lastDayAction,
+        uint32 _aprStartDay,
         uint32 lockEndDay
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
         if (lockEndDay < endDay) {
-            lockDays = (lockEndDay >= _lastDayAction)
-                ? lockEndDay - _lastDayAction
+            lockDays = (lockEndDay >= _aprStartDay)
+                ? lockEndDay - _aprStartDay
                 : 0;
-            unlockDays = (lockEndDay >= _lastDayAction)
+            unlockDays = (lockEndDay >= _aprStartDay)
                 ? endDay - lockEndDay
-                : endDay - _lastDayAction;
+                : endDay - _aprStartDay;
         } else {
-            lockDays = endDay - _lastDayAction;
+            lockDays = endDay - _aprStartDay;
             unlockDays = 0;
         }
     }
@@ -358,7 +358,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         (uint32 lockDays, uint32 unlockDays) = getMultiplier(
             _userInfo.depositStartDay,
-            _userInfo.lastDayAction,
+            _userInfo.aprStartDay,
             _userTier.lockPeriod,
             currentDay
         );
