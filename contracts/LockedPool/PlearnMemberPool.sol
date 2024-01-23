@@ -310,34 +310,22 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint32 lockEndDay,
         uint32 _currentDay
     ) internal pure returns (uint32 lockDays, uint32 unlockDays) {
-        if (lockEndDay < _currentDay) {
-            lockDays = (lockEndDay >= _aprStartDay)
-                ? lockEndDay - _aprStartDay
-                : 0;
-            unlockDays = (lockEndDay >= _aprStartDay)
-                ? _currentDay - lockEndDay
-                : _currentDay - _aprStartDay;
-        } else {
-            lockDays = _currentDay - _aprStartDay;
-            unlockDays = 0;
-        }
+        uint32 aprEndDay = lockEndDay < _currentDay ? lockEndDay : _currentDay;
+        lockDays = (aprEndDay >= _aprStartDay) ? aprEndDay - _aprStartDay : 0;
+        unlockDays = (lockEndDay >= _aprStartDay)
+            ? _currentDay - aprEndDay
+            : _currentDay - _aprStartDay;
     }
 
     function calculateDaysBeyondContractPeriod(
         uint32 _aprStartDay,
         uint32 lockEndDay
     ) internal view returns (uint32 lockDays, uint32 unlockDays) {
-        if (lockEndDay < endDay) {
-            lockDays = (lockEndDay >= _aprStartDay)
-                ? lockEndDay - _aprStartDay
-                : 0;
-            unlockDays = (lockEndDay >= _aprStartDay)
-                ? endDay - lockEndDay
-                : endDay - _aprStartDay;
-        } else {
-            lockDays = endDay - _aprStartDay;
-            unlockDays = 0;
-        }
+        uint32 aprEndDay = lockEndDay < endDay ? lockEndDay : endDay;
+        lockDays = (aprEndDay >= _aprStartDay) ? aprEndDay - _aprStartDay : 0;
+        unlockDays = (lockEndDay >= _aprStartDay)
+            ? endDay - aprEndDay
+            : endDay - _aprStartDay;
     }
 
     function calculateAccruedInterest(
