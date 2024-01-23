@@ -47,6 +47,15 @@ describe("PlearnMemberPool contract", function () {
 
     // add tier
     await plearnMemberPool.addTier({
+      // No tier
+      lockDayPercent: 0, // 0.001% per day
+      pccLockDayPercent: 0,
+      lockPeriod: 0,
+      maxAmount: 0,
+      minAmount: 0,
+      totalDeposited: 0,
+    });
+    await plearnMemberPool.addTier({
       // Silver
       lockDayPercent: 10000, // 0.001% per day
       pccLockDayPercent: 10000,
@@ -101,7 +110,7 @@ describe("PlearnMemberPool contract", function () {
   describe("Deposit", function () {
     it("should get 1000 staked token when deposit 1000 PLN", async function () {
       const depositAmount = toBigNumber("1000");
-      const tier = 0;
+      const tier = 1;
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
         .connect(user1)
@@ -117,7 +126,7 @@ describe("PlearnMemberPool contract", function () {
 
     it("should allow deposit within tier limits", async function () {
       const depositAmount = toBigNumber("20000");
-      const tierIndex = 1;
+      const tierIndex = 2;
 
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
@@ -139,7 +148,7 @@ describe("PlearnMemberPool contract", function () {
       const newEndDay = 0;
       await plearnMemberPool.connect(owner).setDepositEndDay(newEndDay);
       const depositAmount = toBigNumber("10000");
-      const tierIndex = 1;
+      const tierIndex = 2;
 
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
@@ -153,7 +162,7 @@ describe("PlearnMemberPool contract", function () {
 
     it("should reject deposit below tier minimum", async function () {
       const depositAmount = toBigNumber("500");
-      const tierIndex = 1;
+      const tierIndex = 2;
 
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
@@ -167,7 +176,7 @@ describe("PlearnMemberPool contract", function () {
 
     it("should reject deposit above tier maximum", async function () {
       const depositAmount = toBigNumber("60000");
-      const tierIndex = 1;
+      const tierIndex = 2;
 
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
@@ -183,7 +192,7 @@ describe("PlearnMemberPool contract", function () {
   describe("Withdraw", function () {
     beforeEach(async function () {
       const depositAmount = toBigNumber("50000");
-      const tierIndex = 2;
+      const tierIndex = 3;
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
         .connect(user1)
@@ -193,7 +202,7 @@ describe("PlearnMemberPool contract", function () {
 
     it("should allow user to withdraw after lock period", async function () {
       const withdrawAmount = toBigNumber("5000");
-      const tierIndex = 2;
+      const tierIndex = 3;
       const tier = await plearnMemberPool.tiers(tierIndex);
 
       await increaseTime(tier.lockPeriod * 86400); // 180 days
@@ -232,7 +241,7 @@ describe("PlearnMemberPool contract", function () {
 
     it("Tier Downgrade on Withdrawal Below Current Tier Minimum", async function () {
       const withdrawAmount = toBigNumber("40000");
-      const tierIndex = 2;
+      const tierIndex = 3;
       const tier = await plearnMemberPool.tiers(tierIndex);
 
       await increaseTime(tier.lockPeriod * 86400); // 180 days
@@ -243,7 +252,23 @@ describe("PlearnMemberPool contract", function () {
 
       const userInfo = await plearnMemberPool.userInfo(user1.address);
       expect(userInfo.amount).to.equal(toBigNumber("10000"));
-      expect(userInfo.tierIndex).to.equal(1);
+      expect(userInfo.tierIndex).to.equal(2);
+    });
+
+    it("should allow user to withdraw and current tier is No tier", async function () {
+      const withdrawAmount = toBigNumber("49900");
+      const tierIndex = 3;
+      const tier = await plearnMemberPool.tiers(tierIndex);
+
+      await increaseTime(tier.lockPeriod * 86400); // 180 days
+
+      await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
+        .to.emit(plearnMemberPool, "Withdraw")
+        .withArgs(user1.address, withdrawAmount);
+
+      const userInfo = await plearnMemberPool.userInfo(user1.address);
+      expect(userInfo.amount).to.equal(toBigNumber("100"));
+      expect(userInfo.tierIndex).to.equal(0);
     });
 
     it("should allow user to withdraw the entire locked amount after end day update", async function () {
@@ -273,7 +298,7 @@ describe("PlearnMemberPool contract", function () {
   describe("Harvest", function () {
     beforeEach(async function () {
       const depositAmount = toBigNumber("1000");
-      const tierIndex = 0;
+      const tierIndex = 1;
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
         .connect(user1)
@@ -297,7 +322,8 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should allow user to harvest rewards after unlock period + 10 days", async function () {
-      const tier = await plearnMemberPool.tiers(0);
+      const tierIndex = 1;
+      const tier = await plearnMemberPool.tiers(tierIndex);
       const unlockTime = tier.lockPeriod * 86400 + 10 * 86400;
       await increaseTime(unlockTime);
 
@@ -343,7 +369,7 @@ describe("PlearnMemberPool contract", function () {
 
   describe("Reward Calculation", function () {
     let initialEndDay;
-    const tierIndex = 1;
+    const tierIndex = 2;
     const depositAmount = toBigNumber("10000");
     const additionalDeposit = toBigNumber("40000");
     beforeEach(async function () {
@@ -408,7 +434,7 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should calculate rewards correctly after user upgrade tier", async function () {
-      const newTierIndex = 2;
+      const newTierIndex = 3;
       await plearnToken
         .connect(user1)
         .approve(plearnMemberPool.address, additionalDeposit);
@@ -457,7 +483,7 @@ describe("PlearnMemberPool contract", function () {
 
       const userInfo = await plearnMemberPool.userInfo(user1.address);
       expect(userInfo.amount).to.equal(toBigNumber("1000"));
-      expect(userInfo.tierIndex).to.equal(0);
+      expect(userInfo.tierIndex).to.equal(1);
 
       await increaseTime(10 * 86400); // 10 days
 
@@ -585,7 +611,7 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should allow owner to set an existing tier", async function () {
-      const tierIndex = 0;
+      const tierIndex = 1;
       const updatedTier = {
         lockDayPercent: 15000,
         pccLockDayPercent: 0,
@@ -610,7 +636,7 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should correctly update tier when tier is set", async function () {
-      const tierIndex = 0;
+      const tierIndex = 1;
       const depositAmount = toBigNumber("1000");
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
@@ -653,7 +679,7 @@ describe("PlearnMemberPool contract", function () {
     const initialDeposit = toBigNumber("1000");
     const additionalDeposit = toBigNumber("9000");
     beforeEach(async function () {
-      const initialTierIndex = 0;
+      const initialTierIndex = 1;
 
       await plearnToken.transfer(user1.address, initialDeposit);
       await plearnToken
@@ -665,7 +691,7 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("Verify Lock Period Extension on Tier Upgrade", async function () {
-      const newTierIndex = 1;
+      const newTierIndex = 2;
       await plearnToken.transfer(user1.address, additionalDeposit);
 
       const daysToPass = 10;
@@ -682,7 +708,7 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should allow user to upgrade tier", async function () {
-      const newTierIndex = 1;
+      const newTierIndex = 2;
       await plearnToken.transfer(user1.address, additionalDeposit);
 
       await plearnMemberPool
@@ -694,6 +720,27 @@ describe("PlearnMemberPool contract", function () {
       expect(info.tierIndex).to.equal(newTierIndex);
       expect(info.amount).to.equal(initialDeposit.add(additionalDeposit));
     });
+
+    it("should allow user to upgrade tier after lock period end and depositStartDay is updated", async function () {
+      const tierIndex = 1;
+      const tier = await plearnMemberPool.tiers(tierIndex);
+      const daysToPass = tier.lockPeriod;
+      await increaseTime(86400 * daysToPass); // 30 days
+      const newTierIndex = 2;
+      const newTier = await plearnMemberPool.tiers(newTierIndex);
+      await plearnToken.transfer(user1.address, additionalDeposit);
+
+      await plearnMemberPool
+        .connect(user1)
+        .deposit(newTierIndex, additionalDeposit);
+
+      const currentDay = await plearnMemberPool.getCurrentDay();
+      const [info, , ,] = await plearnMemberPool.getUserInfo(user1.address);
+
+      expect(info.tierIndex).to.equal(newTierIndex);
+      expect(info.amount).to.equal(initialDeposit.add(additionalDeposit));
+      expect(info.depositStartDay).to.equal(currentDay);
+    });
   });
 
   describe("Lock Extension", function () {
@@ -701,7 +748,7 @@ describe("PlearnMemberPool contract", function () {
 
     beforeEach(async function () {
       initialDeposit = toBigNumber("10000");
-      tierIndex = 1;
+      tierIndex = 2;
 
       await plearnToken.transfer(user1.address, initialDeposit);
       await plearnToken
@@ -800,7 +847,7 @@ describe("PlearnMemberPool contract", function () {
       await plearnMemberPool.connect(owner).setDepositEndDay(currentDay + 200);
 
       const depositAmount = toBigNumber("10000");
-      tierIndex = 1;
+      tierIndex = 2;
 
       await plearnToken.transfer(user1.address, depositAmount);
       await plearnToken
