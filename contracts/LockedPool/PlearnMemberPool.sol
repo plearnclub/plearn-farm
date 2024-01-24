@@ -408,8 +408,24 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint256 _amount,
         address _to
     ) external onlyOwner {
+        require(_token != stakedToken, "Cannot be staked token");
         _token.safeTransfer(_to, _amount);
         emit TokenWithdraw(address(_token), _amount, _to);
+    }
+
+    function emergencyWithdraw(address _user) external onlyOwner {
+        UserInfo storage _userInfo = userInfo[_user];
+        uint256 amountToTransfer = _userInfo.amount;
+        _userInfo.aprStartDay = 0;
+        _userInfo.amount = 0;
+        _userInfo.tierIndex = 0;
+        _userInfo.depositStartDay = 0;
+        _userInfo.tier = tiers[0];
+
+        if (amountToTransfer > 0) {
+            stakedToken.safeTransfer(_user, amountToTransfer);
+        }
+        emit EmergencyWithdraw(_user, amountToTransfer);
     }
 
     /* ========== EVENTS ========== */
@@ -429,4 +445,5 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         uint256 amount,
         address indexed to
     );
+    event EmergencyWithdraw(address indexed user, uint256 amount);
 }
