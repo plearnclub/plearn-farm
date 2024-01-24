@@ -415,6 +415,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     function emergencyWithdraw(address _user) external onlyOwner {
         UserInfo storage _userInfo = userInfo[_user];
+        require(_userInfo.amount > 0, "Withdraw amount must be greater than 0");
         uint256 amountToTransfer = _userInfo.amount;
         _userInfo.aprStartDay = 0;
         _userInfo.amount = 0;
