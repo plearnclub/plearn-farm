@@ -214,7 +214,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         stakedToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         if (
-            _userInfo.depositStartDay + _userInfo.tier.lockPeriod <= currentDay
+            currentDay - _userInfo.depositStartDay > _userInfo.tier.lockPeriod
         ) {
             _userInfo.depositStartDay = currentDay;
         }
@@ -415,6 +415,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
     function emergencyWithdraw(address _user) external onlyOwner {
         UserInfo storage _userInfo = userInfo[_user];
+        uint256 _userTierIndex = _userInfo.tierIndex;
         require(_userInfo.amount > 0, "Withdraw amount must be greater than 0");
         uint256 amountToTransfer = _userInfo.amount;
         _userInfo.aprStartDay = 0;
@@ -422,6 +423,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
         _userInfo.tierIndex = 0;
         _userInfo.depositStartDay = 0;
         _userInfo.tier = tiers[0];
+        tiers[_userTierIndex].totalDeposited -= amountToTransfer;
 
         if (amountToTransfer > 0) {
             stakedToken.safeTransfer(_user, amountToTransfer);
