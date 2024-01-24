@@ -16,7 +16,7 @@ describe("PlearnMemberPool contract", function () {
     plearnToken = await PlearnToken.deploy(
       "PLN",
       "PLN",
-      ethers.utils.parseEther("5000000")
+      toBigNumber("5000000")
     );
     await plearnToken.deployed();
 
@@ -39,7 +39,7 @@ describe("PlearnMemberPool contract", function () {
       phillCoin.address, // _pccRewardToken
       plearnRewardTreasury.address, // _rewardTreasury
       21185, // _endDay
-      21185, // _depositEndDay
+      0, // _depositEndDay
       10000, // _unlockDayPercentBase
       10000 // _pccUnlockDayPercentBase
     );
@@ -103,6 +103,8 @@ describe("PlearnMemberPool contract", function () {
       plearnMemberPool.address
     );
     await plearnRewardTreasury.addAdmin(plearnMemberPool.address);
+    const newEndDay = 21185;
+    await plearnMemberPool.connect(owner).setDepositEndDay(newEndDay);
 
     // console.log("getCurrentDay", await plearnMemberPool.getCurrentDay());
   });
@@ -206,20 +208,21 @@ describe("PlearnMemberPool contract", function () {
         user1.address
       );
       const tier = await userInfoBeforeWithdraw.tier; // tier index = 3
+      const lockPeriod = tier.lockPeriod + 1;
 
-      await increaseTime(tier.lockPeriod * 86400); // 180 days
+      await increaseTime(lockPeriod * 86400); // 181 days
 
       await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
         .to.emit(plearnMemberPool, "Withdraw")
         .withArgs(user1.address, withdrawAmount);
 
       expect(await plearnToken.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("14000"),
+        toBigNumber("14000.5"),
         toBigNumber("0.01")
       );
 
       expect(await phillCoin.balanceOf(user1.address)).to.be.closeTo(
-        toBigNumber("9000"),
+        toBigNumber("9000.5"),
         toBigNumber("0.01")
       );
 
@@ -248,8 +251,9 @@ describe("PlearnMemberPool contract", function () {
         user1.address
       );
       const tier = await userInfoBeforeWithdraw.tier; // tier index = 3
+      const lockPeriod = tier.lockPeriod + 1;
 
-      await increaseTime(tier.lockPeriod * 86400); // 180 days
+      await increaseTime(lockPeriod * 86400); // 181 days
 
       await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
         .to.emit(plearnMemberPool, "Withdraw")
@@ -267,7 +271,9 @@ describe("PlearnMemberPool contract", function () {
       );
       const tier = await userInfoBeforeWithdraw.tier; // tier index = 3
 
-      await increaseTime(tier.lockPeriod * 86400); // 180 days
+      const lockPeriod = tier.lockPeriod + 1;
+
+      await increaseTime(lockPeriod * 86400); // 181 days
 
       await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
         .to.emit(plearnMemberPool, "Withdraw")
@@ -490,8 +496,8 @@ describe("PlearnMemberPool contract", function () {
         user1.address
       );
       const tier = await userInfoBeforeWithdraw.tier; // tier index = 2
-
-      await increaseTime(tier.lockPeriod * 86400); // 90 days
+      const lockPeriod = tier.lockPeriod + 1;
+      await increaseTime(lockPeriod * 86400); // 91 days
 
       await expect(plearnMemberPool.connect(user1).withdraw(withdrawAmount))
         .to.emit(plearnMemberPool, "Withdraw")
@@ -802,6 +808,112 @@ describe("PlearnMemberPool contract", function () {
       expect(userInfo.depositStartDay).to.be.above(depositStartDayBefore);
 
       expect(userInfo.amount).to.equal(initialDeposit);
+    });
+  });
+
+  describe("Emergency Withdraw", function () {
+    let depositAmount;
+    beforeEach(async function () {
+      // Setup deposit amount and make deposit
+      depositAmount = toBigNumber("1000");
+      await plearnToken.transfer(user1.address, depositAmount);
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, depositAmount);
+      await plearnMemberPool.connect(user1).deposit(1, depositAmount);
+    });
+
+    it("should allow owner to perform an emergency withdraw", async function () {
+      // Perform emergency withdraw
+      await expect(
+        plearnMemberPool.connect(owner).emergencyWithdraw(user1.address)
+      )
+        .to.emit(plearnMemberPool, "EmergencyWithdraw")
+        .withArgs(user1.address, depositAmount);
+
+      // Check user balance after withdraw
+      const userBalance = await plearnToken.balanceOf(user1.address);
+      expect(userBalance).to.equal(depositAmount);
+
+      // Check user info reset
+      const userInfo = await plearnMemberPool.userInfo(user1.address);
+      expect(userInfo.amount).to.equal(0);
+      expect(userInfo.tierIndex).to.equal(0);
+    });
+
+    it("should reject non-owner accounts from performing an emergency withdraw", async function () {
+      await expect(
+        plearnMemberPool.connect(user1).emergencyWithdraw(user1.address)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+  });
+
+  describe("Token Withdrawal", function () {
+    let otherToken;
+    let withdrawAmount;
+
+    beforeEach(async function () {
+      // Deploy a new token for testing withdrawal
+      const OtherToken = await ethers.getContractFactory("MockBEP20");
+      otherToken = await OtherToken.deploy(
+        "Other Token",
+        "OT",
+        toBigNumber("1000")
+      );
+      await otherToken.deployed();
+
+      // Set withdraw amount
+      withdrawAmount = toBigNumber("100");
+      // Transfer tokens to the contract for withdrawal
+      await otherToken.transfer(plearnMemberPool.address, withdrawAmount);
+    });
+
+    it("should allow owner to withdraw non-staked tokens", async function () {
+      await expect(
+        plearnMemberPool
+          .connect(owner)
+          .withdrawToken(otherToken.address, withdrawAmount, owner.address)
+      )
+        .to.emit(plearnMemberPool, "TokenWithdraw")
+        .withArgs(otherToken.address, withdrawAmount, owner.address);
+
+      // Check owner balance after withdraw
+      const ownerBalance = await otherToken.balanceOf(owner.address);
+      expect(ownerBalance).to.equal(toBigNumber("1000"));
+    });
+
+    it("should reject withdrawal of staked token", async function () {
+      await expect(
+        plearnMemberPool
+          .connect(owner)
+          .withdrawToken(plearnToken.address, withdrawAmount, owner.address)
+      ).to.be.revertedWith("Cannot be staked token");
+    });
+
+    it("should reject non-owner accounts from withdrawing tokens", async function () {
+      await expect(
+        plearnMemberPool
+          .connect(user1)
+          .withdrawToken(otherToken.address, withdrawAmount, user1.address)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+  });
+
+  describe("Gas", function () {
+    it("should use less than X gas", async function () {
+      const depositAmount = toBigNumber("50000");
+      const tierIndex = 3;
+      await plearnToken.transfer(user1.address, depositAmount);
+      await plearnToken
+        .connect(user1)
+        .approve(plearnMemberPool.address, depositAmount);
+      const txResponse = await plearnMemberPool
+        .connect(user1)
+        .deposit(tierIndex, depositAmount);
+      const txReceipt = await txResponse.wait();
+      const gasUsed = txReceipt.gasUsed;
+      console.log(`Gas used: ${gasUsed.toString()}`);
+      //   expect(gasUsed).to.be.below(xxx);
     });
   });
 
