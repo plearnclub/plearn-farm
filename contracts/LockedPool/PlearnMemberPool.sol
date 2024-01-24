@@ -244,7 +244,7 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if (currentDay < endDay) {
             require(
-                currentDay - _userInfo.depositStartDay >= _userTier.lockPeriod,
+                currentDay - _userInfo.depositStartDay > _userTier.lockPeriod,
                 "Cannot withdraw yet"
             );
         }
@@ -288,50 +288,32 @@ contract PlearnMemberPool is Ownable, ReentrancyGuard {
 
         if (_aprStartDay == 0) return (0, 0);
 
-        if (_currentDay >= _aprStartDay && _currentDay <= endDay) {
-            (lockDays, unlockDays) = calculateDaysWithinContractPeriod(
-                _aprStartDay,
-                lockEndDay,
-                _currentDay
-            );
-        } else if (_currentDay > endDay && endDay >= _aprStartDay) {
-            (lockDays, unlockDays) = calculateDaysBeyondContractPeriod(
-                _aprStartDay,
-                lockEndDay
-            );
-        } else {
-            lockDays = 0;
-            unlockDays = 0;
-        }
+        uint32 finalDay = _currentDay <= endDay ? _currentDay : endDay;
+        (lockDays, unlockDays) = calculateDays(
+            _aprStartDay,
+            lockEndDay,
+            finalDay
+        );
     }
 
-    function calculateDaysWithinContractPeriod(
+    function calculateDays(
         uint32 _aprStartDay,
         uint32 _lockEndDay,
-        uint32 _currentDay
+        uint32 _finalDay
     ) internal pure returns (uint32 lockDays, uint32 unlockDays) {
-        uint32 aprEndDay = _lockEndDay < _currentDay
+        uint32 lockAprEndDay = _lockEndDay < _finalDay
             ? _lockEndDay
-            : _currentDay;
+            : _finalDay;
 
-        uint32 unlockStartDay = (_lockEndDay >= _aprStartDay)
-            ? aprEndDay
+        uint32 unlockStartDay = (_aprStartDay < _lockEndDay)
+            ? lockAprEndDay
             : _aprStartDay;
 
-        lockDays = (aprEndDay >= _aprStartDay) ? aprEndDay - _aprStartDay : 0;
+        lockDays = (lockAprEndDay >= _aprStartDay)
+            ? lockAprEndDay - _aprStartDay
+            : 0;
 
-        unlockDays = _currentDay - unlockStartDay;
-    }
-
-    function calculateDaysBeyondContractPeriod(
-        uint32 _aprStartDay,
-        uint32 _lockEndDay
-    ) internal view returns (uint32 lockDays, uint32 unlockDays) {
-        uint32 aprEndDay = _lockEndDay < endDay ? _lockEndDay : endDay;
-        lockDays = (aprEndDay >= _aprStartDay) ? aprEndDay - _aprStartDay : 0;
-        unlockDays = (_lockEndDay >= _aprStartDay)
-            ? endDay - aprEndDay
-            : endDay - _aprStartDay;
+        unlockDays = _finalDay - unlockStartDay;
     }
 
     function calculateAccruedInterest(
