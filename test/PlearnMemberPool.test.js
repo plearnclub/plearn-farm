@@ -754,7 +754,7 @@ describe("PlearnMemberPool contract", function () {
         user1.address
       );
       const tier = await userInfoBeforeAdditionalDeposit.tier; // tier index = 1
-      const daysToPass = tier.lockPeriod;
+      const daysToPass = tier.lockPeriod + 1;
       await increaseTime(86400 * daysToPass); // 30 days
       const newTierIndex = 2;
 
@@ -790,8 +790,8 @@ describe("PlearnMemberPool contract", function () {
         user1.address
       );
       const tier = await userInfoAfterDeposit.tier; // tier index = 2
-
-      await increaseTime(tier.lockPeriod * 86400); // 90 days
+      const lockPeriod = tier.lockPeriod + 1;
+      await increaseTime(lockPeriod * 86400); // 90 days
     });
 
     it("should extend lock period with zero deposit", async function () {
@@ -824,13 +824,16 @@ describe("PlearnMemberPool contract", function () {
     });
 
     it("should allow owner to perform an emergency withdraw", async function () {
+      const tier = await plearnMemberPool.tiers(1);
+      expect(tier.totalDeposited).to.equal(depositAmount);
       // Perform emergency withdraw
       await expect(
         plearnMemberPool.connect(owner).emergencyWithdraw(user1.address)
       )
         .to.emit(plearnMemberPool, "EmergencyWithdraw")
         .withArgs(user1.address, depositAmount);
-
+      const currentTier = await plearnMemberPool.tiers(1);
+      expect(currentTier.totalDeposited).to.equal(0);
       // Check user balance after withdraw
       const userBalance = await plearnToken.balanceOf(user1.address);
       expect(userBalance).to.equal(depositAmount);
