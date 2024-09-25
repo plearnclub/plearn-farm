@@ -267,13 +267,10 @@ contract PlearnRankPool is Ownable, ReentrancyGuard {
             _maximumAmount
         );
 
-        tiers[_id] = Tier({
-            id: _id,
-            minimumAmount: _minimumAmount,
-            maximumAmount: _maximumAmount,
-            plnRewardPerBlockPerPLN: _plnRewardPerBlockPerPLN,
-            plncRewardPerBlockPerPLN: _plncRewardPerBlockPerPLN
-        });
+        tiers[_id].minimumAmount = _minimumAmount;
+        tiers[_id].maximumAmount = _maximumAmount;
+        tiers[_id].plnRewardPerBlockPerPLN = _plnRewardPerBlockPerPLN;
+        tiers[_id].plncRewardPerBlockPerPLN = _plncRewardPerBlockPerPLN;
     }
 
     function getUserTier(address _user) public view returns (Tier memory) {
